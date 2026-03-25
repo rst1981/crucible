@@ -7,7 +7,23 @@
       "Bash(python -c \"import reportlab; print\\(''reportlab available''\\)\")",
       "Bash(mkdir -p core/agents core/theories forge/researchers forge/specs forge/research api/routers api/services web/src/pages/ForgePage web/src/pages/DashboardPage web/src/pages/PortalPage web/src/stores web/src/components scenarios/hormuz data/snapshots)",
       "Bash(touch core/__init__.py core/agents/__init__.py core/theories/__init__.py forge/__init__.py forge/researchers/__init__.py api/__init__.py api/routers/__init__.py api/services/__init__.py scenarios/__init__.py scenarios/hormuz/__init__.py)",
-      "Bash(xargs -I{} touch {}/.gitkeep)"
+      "Bash(xargs -I{} touch {}/.gitkeep)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(node -e \"const s = require\\(''fs''\\).readFileSync\\(''d:/dev/crucible/.claude/settings.json'',''utf8''\\); const j = JSON.parse\\(s\\); console.log\\(j.hooks.Stop[0].hooks[0].command\\);\")"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd d:/dev/crucible && git add CONTEXT.md && git diff --cached --quiet || (git commit -m \"Update CONTEXT.md session notes\" && git push)",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }
