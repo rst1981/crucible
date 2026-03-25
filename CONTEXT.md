@@ -153,18 +153,38 @@ crucible/
 
 ---
 
+## Custom Skills (Claude Code)
+
+Located in `.claude/skills/` — invoke with `/skill-name`:
+
+| Skill | Trigger | Purpose |
+|-------|---------|---------|
+| `/research-theory` | Before designing a sim | arXiv + SSRN search → theory brief + SimSpec update |
+| `/research-data` | Before launching a sim | FRED + World Bank → parameter values + data brief |
+| `/scaffold-sim` | Ready to build a scenario | SimSpec → full scenario directory scaffold |
+
+---
+
 ## Current Status
 
 **Date:** March 24, 2026
 
 **Phase:** Planning complete. Repo initialized. No code written yet.
 
-**Next steps:**
-1. Scaffold directory structure
-2. Write `core/spec.py` — the SimSpec dataclass
-3. Write first research adapter (FRED or arXiv)
-4. Build scoping agent skeleton
-5. Port Hormuz as `scenarios/hormuz/`
+**Completed this session:**
+- PROPOSAL.md expanded: 30+ theory models across 5 domains, full 7-subsystem architecture
+- DEVPLAN.md written: 12-week plan with weekly task breakdown
+- Directory skeleton scaffolded: all packages initialized with `__init__.py`
+- 3 custom gstack-style skills created: `/research-theory`, `/research-data`, `/scaffold-sim`
+- README.md = DEVPLAN.md (live on GitHub)
+- Stop hook added: auto-commits and pushes CONTEXT.md on conversation end
+
+**Next steps (Week 1 — start tomorrow):**
+1. `core/spec.py` — SimSpec dataclass (full Pydantic schema)
+2. `core/agents/base.py` — BDIAgent base class
+3. `core/sim_runner.py` — tick loop
+4. `core/theories/base.py` — theory module interface
+5. Theory stubs × 5 (Richardson, Wittman-Zartman, Fearon, Keynesian, Porter's)
 
 ---
 
