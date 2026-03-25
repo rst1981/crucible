@@ -10,7 +10,20 @@
       "Bash(xargs -I{} touch {}/.gitkeep)",
       "Skill(update-config)",
       "Skill(update-config:*)",
-      "Bash(node -e \"const s = require\\(''fs''\\).readFileSync\\(''d:/dev/crucible/.claude/settings.json'',''utf8''\\); const j = JSON.parse\\(s\\); console.log\\(j.hooks.Stop[0].hooks[0].command\\);\")"
+      "Bash(node -e \"const s = require\\(''fs''\\).readFileSync\\(''d:/dev/crucible/.claude/settings.json'',''utf8''\\); const j = JSON.parse\\(s\\); console.log\\(j.hooks.Stop[0].hooks[0].command\\);\")",
+      "Bash(schtasks /create /tn \"Crucible-AutosaveContext\" /tr \"bash d:/dev/crucible/scripts/autosave-context.sh\" /sc minute /mo 15 /f)",
+      "Bash(where bash:*)",
+      "Bash(powershell -Command \"schtasks /create /tn ''Crucible-AutosaveContext'' /tr ''C:\\\\Progra~1\\\\Git\\\\usr\\\\bin\\\\bash.exe d:/dev/crucible/scripts/autosave-context.sh'' /sc minute /mo 15 /f\")",
+      "Bash(powershell -Command \"schtasks /query /tn ''Crucible-AutosaveContext'' /fo list\")",
+      "Skill(plan-ceo-review)",
+      "Skill(plan-ceo-review:*)",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); print\\(data[0][''''text'''']\\)\")",
+      "Bash(python3 -c \":*)",
+      "Bash(node -e \":*)",
+      "Skill(plan-eng-review)",
+      "Skill(plan-eng-review:*)",
+      "Bash(python scripts/sync-memory-to-context.py)",
+      "Bash(python -m pytest tests/ -q)"
     ]
   },
   "hooks": {

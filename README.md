@@ -418,12 +418,13 @@ Goal: a working simulation engine with the Hormuz scenario running inside the Cr
 
 ### Week 1 — Core Data Model & Theory Stubs
 
-- [ ] **`core/spec.py`** — SimSpec dataclass (full schema: actors, theories, parameters, timeframe, metrics, uncertainties)
-- [ ] **`core/agents/base.py`** — BDIAgent base class (beliefs dict, desires list, capabilities dict, `update_beliefs()`, `decide()`, `act()` interface)
+- [x] **`core/spec.py`** — SimSpec + BeliefSpec (decay_rate/process_noise/maps_to_env_key) + ActorSpec (observation_noise_sigma) + EnvKeySpec + SpecDiff (57 tests)
+- [x] **`core/agents/base.py`** — BDIAgent + DefaultBDIAgent + AgentHydrationError + tick() coordinator + from_spec() factory (131 tests)
+- [x] **`core/theories/base.py`** + **`__init__.py`** — TheoryBase ABC + @register_theory + get_theory/list_theories registry (32 tests)
+- [x] **`core/theories/richardson_arms_race.py`** — Full Richardson ODE implementation with dt scaling, stability check, equilibrium() (30 tests)
 - [ ] **`core/sim_runner.py`** — Domain-agnostic tick loop (initialize → tick → record → snapshot trigger)
-- [ ] **`core/theories/base.py`** — Theory module base class (parameters, state_variables, `update(env, agents, tick)` interface)
-- [ ] **Theory stubs × 5** — Richardson, Wittman-Zartman, Fearon, Keynesian Multiplier, Porter's Five Forces (interface only, logic TODO)
-- [ ] **`requirements.txt`** — pin Python deps (fastapi, uvicorn, pydantic, apscheduler, anthropic, httpx)
+- [x] **Theory implementations** — Fearon bargaining, Wittman-Zartman ripeness, Keynesian multiplier, Porter's Five Forces
+- [x] **`requirements.txt`** — pinned deps (fastapi, uvicorn, pydantic, anthropic, apscheduler, sqlalchemy, httpx, redis)
 
 ### Week 2 — Research Adapters
 

@@ -2,7 +2,19 @@
 
 > Interface designs for the four core engine modules.
 > These define the contracts that all scenarios and extensions must satisfy.
-> Implementation begins Week 1.
+
+---
+
+## Implementation Status
+
+| Module | File | Status | Tests |
+|--------|------|--------|-------|
+| SimSpec | `core/spec.py` | ✅ Implemented | 57 passing |
+| BDI Agents | `core/agents/base.py` | ✅ Implemented | 131 passing |
+| Theory base + registry | `core/theories/base.py`, `__init__.py` | ✅ Implemented | 32 passing |
+| Richardson Arms Race | `core/theories/richardson_arms_race.py` | ✅ Implemented | 30 passing |
+| SimRunner | `core/sim_runner.py` | 🔲 Next | — |
+| Remaining theories | Fearon, Wittman-Zartman, Keynesian, Porter | 🔲 Pending | — |
 
 ---
 
@@ -55,7 +67,7 @@ class BeliefSpec(BaseModel):
     belief_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     description: str = ""
-    dist_type: BeliefDistType = BeliefDistType beta
+    dist_type: BeliefDistType = BeliefDistType.BETA
     # BETA: initial alpha and beta (both > 0)
     alpha: float = 1.0
     beta: float = 1.0
@@ -64,6 +76,11 @@ class BeliefSpec(BaseModel):
     variance: float = 1.0
     # POINT: fixed value
     value: float = 0.0
+    # which env key this belief tracks (if different from belief name)
+    maps_to_env_key: str | None = None
+    # runtime dynamics — propagated to BetaBelief.decay_rate / GaussianBelief.process_noise
+    decay_rate: float = 1.0    # BETA: pull toward uniform per tick (1.0 = no decay)
+    process_noise: float = 0.0  # GAUSSIAN: variance added per tick (0.0 = no diffusion)
 
 
 # ── Desires / objectives ───────────────────────────────────────────────────
@@ -110,6 +127,8 @@ class ActorSpec(BaseModel):
     # initial environment keys this actor owns
     # e.g. {"iran__military_readiness": 0.7, "iran__oil_revenue": 0.4}
     initial_env_contributions: dict[str, float] = Field(default_factory=dict)
+    # per-actor observation noise — overrides UncertaintySpec.observation_noise_sigma
+    observation_noise_sigma: float = 0.02
     # arbitrary scenario-specific metadata
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -208,6 +227,49 @@ class SimSpec(BaseModel):
                     f"'{metric.env_key}' which is not in initial_environment"
                 )
         return self
+
+    def display_env(self, normalized: dict[str, float]) -> dict[str, Any]:
+        """Convert normalized env to display values. Called at API/report layer only."""
+        index = {s.key: s for s in self.env_key_specs}
+        out: dict[str, Any] = {}
+        for k, v in normalized.items():
+            spec = index.get(k)
+            if spec:
+                out[k] = {"normalized": v, "display": v * spec.scale,
+                          "unit": spec.unit, "display_name": spec.display_name or k}
+            else:
+                out[k] = {"normalized": v, "display": v, "unit": "", "display_name": k}
+        return out
+
+
+# ── Display annotations for env keys ───────────────────────────────────────
+
+class EnvKeySpec(BaseModel):
+    """Display metadata for a normalized env key. Engine stays in [0, 1]."""
+    key:          str
+    scale:        float = 1.0    # multiply normalized to get display value
+    unit:         str   = ""     # "USD", "billion USD", "% of GDP", "index"
+    display_name: str   = ""     # human-readable label
+    log_scale:    bool  = False
+
+
+# ── Versioning helpers ──────────────────────────────────────────────────────
+
+@dataclass
+class SpecDiff:
+    """One changed field between two SimSpec versions."""
+    field_path: str
+    old_value:  Any
+    new_value:  Any
+
+
+def diff_simspecs(v1: SimSpec, v2: SimSpec) -> list[SpecDiff]: ...
+    # Diffs: initial_environment (per-key), theories (added/removed/params),
+    # timeframe (field-level), actors (added/removed by actor_id)
+
+def branch_simspec(base: SimSpec, branch_name: str, change_reason: str = "") -> SimSpec: ...
+    # Returns new SimSpec with new spec_id, updated name/description.
+    # Parent relationship stored in DB (sim_specs.parent_spec_id), not on SimSpec.
 ```
 
 ### Key design decisions
@@ -219,6 +281,11 @@ class SimSpec(BaseModel):
 | `agent_class` as dotted path string | SimRunner imports dynamically — no coupling between spec and implementation. |
 | `initial_env_contributions` on ActorSpec | Actor-owned keys are set at spec time; SimRunner merges them into the global env at setup. |
 | `TheoryRef.priority` | Theories with lower priority run first within a tick. Prevents order-dependence surprises. |
+| `maps_to_env_key` on BeliefSpec | Decouples belief name from env key — actor can name a belief "adversary strength" while tracking `iran__military_readiness`. |
+| `decay_rate` / `process_noise` on BeliefSpec | Spec fully describes belief dynamics. Without these, `from_spec()` would silently drop all runtime configuration. |
+| `observation_noise_sigma` on ActorSpec | Per-actor noise models intelligence differences: a well-resourced actor sees more clearly. Overrides UncertaintySpec global. |
+| `EnvKeySpec` + `display_env()` | Engine always operates in [0, 1]. Display translation (scale, unit, label) is API/report layer only. |
+| `SpecDiff` + `branch_simspec()` | Version DAG support: branch a spec for scenario variants, diff for changelogs. Parent stored in DB, not on the spec. |
 
 ---
 
@@ -226,239 +293,121 @@ class SimSpec(BaseModel):
 
 BDI = Belief-Desire-Intention. Beliefs are probabilistic. Decisions derive from expected utility over desires.
 
+### Key types
+
 ```python
-from __future__ import annotations
+class AgentHydrationError(Exception):
+    """Raised when from_spec() cannot build a valid BDIAgent from an ActorSpec.
+    Specific causes: duplicate belief names in the spec."""
 
-import math
-import random
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any
-
-
-# ── Belief types ───────────────────────────────────────────────────────────
 
 @dataclass
 class BetaBelief:
-    """
-    Conjugate prior for probability beliefs (0–1).
-    alpha = pseudo-count of "successes", beta = pseudo-count of "failures".
-    """
+    """Conjugate prior for probability beliefs (0–1)."""
     name: str
-    alpha: float = 1.0
-    beta: float = 1.0
+    alpha: float = 1.0           # pseudo-count of "successes" (> 0, validated)
+    beta: float = 1.0            # pseudo-count of "failures"  (> 0, validated)
+    decay_rate: float = 1.0      # < 1.0 pulls toward uniform prior each tick
+    maps_to_env_key: str | None = None  # env key to read; falls back to name
 
-    @property
-    def mean(self) -> float:
-        return self.alpha / (self.alpha + self.beta)
-
-    @property
-    def variance(self) -> float:
-        a, b = self.alpha, self.beta
-        n = a + b
-        return (a * b) / (n * n * (n + 1))
-
-    def update(self, observed: float, precision: float = 1.0, bias: float = 0.0) -> None:
-        """
-        Bayesian update given an observation in [0, 1].
-        precision: strength of this observation (effective sample size)
-        bias: systematic over/under-estimation (e.g. adversarial perception)
-        """
-        adjusted = max(0.0, min(1.0, observed + bias))
-        self.alpha += precision * adjusted
-        self.beta += precision * (1.0 - adjusted)
-
-    def sample(self) -> float:
-        """Draw a sample from the Beta distribution."""
-        return random.betavariate(self.alpha, self.beta)
+    # __post_init__ validates alpha > 0 and beta > 0 (raises ValueError)
+    # .mean  → alpha / (alpha + beta)
+    # .decay()  → pulls (alpha-1) and (beta-1) toward 0 by decay_rate
+    # .update(observed, precision, bias) → Bayesian update
+    # .sample(rng)  → rng.betavariate(alpha, beta)  ← thread-safe RNG
 
 
 @dataclass
 class GaussianBelief:
-    """
-    Kalman-style belief for continuous quantities.
-    mean: current estimate, variance: uncertainty.
-    """
+    """Kalman-filter belief for continuous quantities."""
     name: str
     mean: float = 0.0
     variance: float = 1.0
+    process_noise: float = 0.0   # variance added per tick (diffusion)
+    maps_to_env_key: str | None = None
 
-    def update(self, observed: float, obs_variance: float = 0.1) -> None:
-        """
-        Kalman filter update step.
-        obs_variance: noise in the observation.
-        """
-        kalman_gain = self.variance / (self.variance + obs_variance)
-        self.mean = self.mean + kalman_gain * (observed - self.mean)
-        self.variance = (1 - kalman_gain) * self.variance
+    # .update(observed, obs_variance) → Kalman gain step
+    #   Guard: if variance + obs_variance == 0.0, return early (no crash)
+    # .diffuse() → variance += process_noise
+    # .sample(rng) → rng.gauss(mean, sqrt(variance))
 
-    def sample(self) -> float:
-        return random.gauss(self.mean, math.sqrt(self.variance))
-
-
-# ── Actions ────────────────────────────────────────────────────────────────
 
 @dataclass
 class Action:
     action_id: str
-    # target actor_id, env key, or "environment"
-    target: str
-    # signed intensity in [-1, 1]: how strongly to push the target
-    intensity: float
-    # capability_id required to execute this action
+    target: str                          # actor_id, env key, or "environment"
     capability_id: str | None = None
-    # env key mutations: {key: delta} — applied by SimRunner after all decide() calls
-    parameters: dict[str, float] = field(default_factory=dict)
-    description: str = ""
+    parameters: dict[str, float] = ...  # {env_key: delta} applied by SimRunner
+    duration: int = 1
+```
 
+### BDIAgent lifecycle
 
-# ── BDIAgent base ──────────────────────────────────────────────────────────
+```
+Tick lifecycle (enforced by tick() coordinator):
+    1. decay_beliefs()           — pull Beta beliefs toward uniform; diffuse Gaussian variance
+    2. observe_environment(env)  — Gaussian noise read of all env keys
+    3. update_beliefs(obs)       — Bayesian / Kalman update; uses maps_to_env_key
+    4. decide(env, tick)         — abstract: return list[Action]
+    NOTE: recharge_capabilities() is NOT called here — SimRunner's job
+```
 
+```python
 class BDIAgent(ABC):
-    """
-    Abstract BDI agent. Subclass and implement decide().
+    def __init__(self, actor_id, name, beliefs, desires, capabilities,
+                 observation_noise_sigma, rng: random.Random): ...
+        # rng is a local random.Random instance — never uses global random state
 
-    Lifecycle per tick (called by SimRunner):
-        1. observe_environment(env)   — noisy read of env keys
-        2. update_beliefs(observations) — Bayesian update
-        3. decide(env, tick)           — abstract: return list[Action]
-        4. (SimRunner resolves actions and mutates env)
-        5. recharge_capabilities()     — partial recovery
-    """
+    def tick(self, env, tick_num) -> list[Action]:
+        """Coordinator: enforces lifecycle steps 1–4 in order."""
+        self.decay_beliefs()
+        obs = self.observe_environment(env)
+        self.update_beliefs(obs)
+        return self.decide(env, tick_num)
 
-    def __init__(
-        self,
-        actor_id: str,
-        name: str,
-        beliefs: dict[str, BetaBelief | GaussianBelief] | None = None,
-        desires: list[dict[str, Any]] | None = None,
-        capabilities: dict[str, dict[str, float]] | None = None,
-        observation_noise_sigma: float = 0.02,
-    ) -> None:
-        self.actor_id = actor_id
-        self.name = name
-        self.beliefs: dict[str, BetaBelief | GaussianBelief] = beliefs or {}
-        self.desires: list[dict[str, Any]] = desires or []
-        # capabilities: {capability_id: {capacity, cost, recovery_rate, cooldown, current, cooldown_remaining}}
-        self.capabilities: dict[str, dict[str, float]] = capabilities or {}
-        self.observation_noise_sigma = observation_noise_sigma
-        # last tick's observations (raw, noisy)
-        self._observations: dict[str, float] = {}
-
-    # ── Observation ────────────────────────────────────────────────────────
-
-    def observe_environment(self, env: dict[str, float]) -> dict[str, float]:
+    @classmethod
+    def from_spec(cls, spec: ActorSpec, rng: random.Random) -> "BDIAgent":
         """
-        Read environment with Gaussian noise.
-        Stores result in self._observations and returns it.
+        Canonical hydration path from ActorSpec.
+        Propagates: decay_rate, process_noise, maps_to_env_key, observation_noise_sigma.
+        Raises AgentHydrationError on duplicate belief names in the spec.
         """
-        obs: dict[str, float] = {}
-        for key, value in env.items():
-            noise = random.gauss(0.0, self.observation_noise_sigma)
-            obs[key] = max(0.0, value + noise)
-        self._observations = obs
-        return obs
-
-    # ── Belief update ──────────────────────────────────────────────────────
-
-    def update_beliefs(self, observations: dict[str, float] | None = None) -> None:
-        """
-        Update beliefs from observations. Override for custom update logic.
-        Default: update any belief whose name matches an observation key.
-        """
-        obs = observations or self._observations
-        for belief_name, belief in self.beliefs.items():
-            if belief_name in obs:
-                if isinstance(belief, BetaBelief):
-                    belief.update(obs[belief_name])
-                elif isinstance(belief, GaussianBelief):
-                    belief.update(obs[belief_name], obs_variance=self.observation_noise_sigma ** 2)
-
-    # ── Decision ───────────────────────────────────────────────────────────
 
     @abstractmethod
-    def decide(self, env: dict[str, float], tick: int) -> list[Action]:
-        """
-        Core BDI decision loop. Return a list of Actions to attempt.
-        SimRunner will filter by can_act() before applying.
-        """
-        ...
+    def decide(self, env, tick) -> list[Action]: ...
 
-    # ── Utility ────────────────────────────────────────────────────────────
+    def expected_utility(self, env) -> float:
+        """Weighted sum of (direction × env_value) across all DesireSpec desires."""
 
-    def expected_utility(self, env: dict[str, float]) -> float:
-        """
-        Compute expected utility across all desires.
-        Returns a weighted sum of (direction × current_value) for each desire.
-        """
-        total = 0.0
-        for desire in self.desires:
-            key = desire.get("target_env_key", "")
-            direction = desire.get("direction", 1.0)
-            weight = desire.get("weight", 1.0)
-            value = env.get(key, 0.0)
-            total += weight * direction * value
-        return total
+    # Capability management: can_act(), expend_capacity(), recharge_capabilities()
+    # Snapshot: get_state_snapshot() → serializable dict
 
-    # ── Capability management ──────────────────────────────────────────────
 
-    def can_act(self, capability_id: str) -> bool:
-        """True if the capability exists, has capacity, and is off cooldown."""
-        if capability_id not in self.capabilities:
-            return False
-        cap = self.capabilities[capability_id]
-        return (
-            cap.get("current", 0.0) >= cap.get("cost", 0.0)
-            and cap.get("cooldown_remaining", 0) <= 0
-        )
+class DefaultBDIAgent(BDIAgent):
+    """
+    Utility-maximizing concrete agent. Covers ~80% of standard scenarios.
 
-    def expend_capacity(self, capability_id: str) -> bool:
-        """Consume capacity and start cooldown. Returns False if cannot act."""
-        if not self.can_act(capability_id):
-            return False
-        cap = self.capabilities[capability_id]
-        cap["current"] = cap.get("current", 0.0) - cap.get("cost", 0.0)
-        cap["cooldown_remaining"] = cap.get("cooldown_ticks", 0)
-        return True
+    decide(): for each owned env key, if desired direction is unsatisfied,
+    use first available capability to push it. Returns one Action per key.
 
-    def recharge_capabilities(self) -> None:
-        """Called by SimRunner at end of each tick."""
-        for cap in self.capabilities.values():
-            max_capacity = cap.get("capacity", 1.0)
-            recovery = cap.get("recovery_rate", 0.05)
-            cap["current"] = min(max_capacity, cap.get("current", 0.0) + recovery)
-            if cap.get("cooldown_remaining", 0) > 0:
-                cap["cooldown_remaining"] -= 1
-
-    # ── Snapshot ───────────────────────────────────────────────────────────
-
-    def get_state_snapshot(self) -> dict[str, Any]:
-        """Return serializable state for snapshot storage."""
-        return {
-            "actor_id": self.actor_id,
-            "name": self.name,
-            "beliefs": {
-                k: {"mean": b.mean, "variance": b.variance}
-                if isinstance(b, GaussianBelief)
-                else {"mean": b.mean, "alpha": b.alpha, "beta": b.beta}
-                for k, b in self.beliefs.items()
-            },
-            "capabilities": {
-                k: {kk: v for kk, v in cap.items()}
-                for k, cap in self.capabilities.items()
-            },
-        }
+    from_spec(): calls super().from_spec() then sets
+        agent.owned_env_keys = list(spec.initial_env_contributions.keys())
+    """
 ```
 
 ### Key design decisions
 
 | Decision | Rationale |
 |----------|-----------|
-| `BetaBelief` for probabilities | Natural for "P(actor cooperates)" type beliefs. Conjugate prior = cheap update. |
-| `GaussianBelief` for continuous | Kalman gain handles uncertainty correctly. |
+| `BetaBelief` for probabilities | Conjugate prior for "P(actor cooperates)" type beliefs — cheap Bayesian update. |
+| `GaussianBelief` for continuous | Kalman gain handles uncertainty correctly; process_noise enables diffusion. |
+| `rng: random.Random` on agent | Thread-safe — each agent has its own RNG, global `random` state untouched. |
+| `tick()` coordinator | Enforces decay→observe→update→decide order; SimRunner calls one method, not five. |
+| `from_spec()` factory | Canonical hydration path; propagates all dynamics config from BeliefSpec to runtime objects. |
+| `AgentHydrationError` | Named exception for spec validation failures — not swallowed silently. |
+| `maps_to_env_key` on beliefs | Belief name can differ from env key — allows human-readable names tracking any env key. |
 | `decide()` returns `list[Action]` | SimRunner resolves all actions after all agents decide — no action ordering bias. |
-| Capabilities as plain dicts | Easy to serialize to snapshots without custom `__json__` methods. |
-| `observation_noise_sigma` on agent | Per-agent noise models intelligence differences between actors. |
+| `DefaultBDIAgent` | Concrete utility-maximizer ships out of the box; scenario agents only need to subclass when default logic is insufficient. |
 
 ---
 
@@ -569,103 +518,64 @@ class TheoryBase(ABC):
 ### Registry (`core/theories/__init__.py`)
 
 ```python
-from __future__ import annotations
-
-from typing import Callable, Type
-
-_THEORY_REGISTRY: dict[str, Type["TheoryBase"]] = {}
-
+_THEORY_REGISTRY: dict[str, Type[TheoryBase]] = {}
 
 def register_theory(theory_id: str) -> Callable:
-    """Decorator to register a theory class by ID."""
-    def decorator(cls):
-        cls.theory_id = theory_id
-        _THEORY_REGISTRY[theory_id] = cls
-        return cls
-    return decorator
+    """
+    Class decorator. Sets cls.theory_id = theory_id and registers in _THEORY_REGISTRY.
+    Raises ValueError if theory_id is already registered (prevents silent overwrites).
+    Auto-discovery: importing the module registers it. No manual registry list needed.
+    """
 
-
-def get_theory(theory_id: str) -> Type["TheoryBase"]:
-    if theory_id not in _THEORY_REGISTRY:
-        raise KeyError(
-            f"Theory '{theory_id}' not registered. "
-            f"Available: {list(_THEORY_REGISTRY.keys())}"
-        )
-    return _THEORY_REGISTRY[theory_id]
-
+def get_theory(theory_id: str) -> Type[TheoryBase]:
+    """Raises KeyError if not registered (includes hint to import the module)."""
 
 def list_theories() -> list[str]:
-    return sorted(_THEORY_REGISTRY.keys())
+    """Returns sorted list of all registered theory IDs."""
 ```
 
-### Example theory stub
+### Richardson Arms Race (`core/theories/richardson_arms_race.py`)
 
-```python
-# core/theories/richardson_arms_race.py
-from core.theories import register_theory
-from core.theories.base import TheoryBase, TheoryStateVariables
-from pydantic import BaseModel
+Full implementation — not a stub. See `ARCHITECTURE-THEORIES.md` §2 for math.
 
+```
+Equations:
+    dx/dt = k·y - a·x + g      (actor A rate of arms change)
+    dy/dt = l·x - b·y + h      (actor B rate of arms change)
 
-@register_theory("richardson_arms_race")
-class RichardsonArmsRace(TheoryBase):
-    """
-    Lewis Fry Richardson (1960) arms race model.
-    dX/dt = aY - mX + g   (actor 1)
-    dY/dt = bX - nY + h   (actor 2)
-    """
+Stability:  a·b > k·l  →  equilibrium exists
+            a·b ≤ k·l  →  runaway escalation (warning logged at construction)
 
-    class Parameters(BaseModel):
-        a: float = 0.2   # actor1 response to actor2 arms
-        b: float = 0.2   # actor2 response to actor1 arms
-        m: float = 0.1   # actor1 fatigue/cost coefficient
-        n: float = 0.1   # actor2 fatigue/cost coefficient
-        g: float = 0.05  # actor1 grievance term
-        h: float = 0.05  # actor2 grievance term
+Parameters (Pydantic Field with ge/le bounds):
+    k, l  defense coefficients  [0, 1]  default 0.30
+    a, b  fatigue coefficients  [0, 1]  default 0.15
+    g, h  grievance terms      [-0.5, 0.5]  default 0.05
+    tick_unit  "month" | "quarter" | "year"  default "year"
+    actor_a_id, actor_b_id  env key prefix  default "actor_a", "actor_b"
 
-    @property
-    def state_variables(self) -> TheoryStateVariables:
-        return TheoryStateVariables(
-            reads=["actor1__military_spending", "actor2__military_spending"],
-            writes=[
-                "richardson_arms_race__actor1_arms",
-                "richardson_arms_race__actor2_arms",
-                "richardson_arms_race__escalation_index",
-            ],
-            initializes=[
-                "richardson_arms_race__actor1_arms",
-                "richardson_arms_race__actor2_arms",
-                "richardson_arms_race__escalation_index",
-            ],
-        )
+dt scaling:  month=1/12, quarter=0.25, year=1.0
 
-    def update(self, env, agents, tick):
-        x = env.get("richardson_arms_race__actor1_arms", 0.5)
-        y = env.get("richardson_arms_race__actor2_arms", 0.5)
-        p = self.params
+Env keys written:
+    {actor_a_id}__military_readiness   actor-namespaced (shared with Fearon, Zartman)
+    {actor_b_id}__military_readiness
+    richardson__escalation_index       (x + y) / 2
+    richardson__stable                 1.0 if a·b > k·l, else 0.0
 
-        dx = p.a * y - p.m * x + p.g
-        dy = p.b * x - p.n * y + p.h
+setup() overrides: military_readiness keys default to 0.5 (not 0.0) if absent
 
-        new_x = max(0.0, min(1.0, x + dx * 0.01))
-        new_y = max(0.0, min(1.0, y + dy * 0.01))
-        escalation = (new_x + new_y) / 2.0
-
-        return {
-            "richardson_arms_race__actor1_arms": new_x,
-            "richardson_arms_race__actor2_arms": new_y,
-            "richardson_arms_race__escalation_index": escalation,
-        }
+equilibrium() → (x*, y*) | None  — returns None if unstable
 ```
 
 ### Key design decisions
 
 | Decision | Rationale |
 |----------|-----------|
-| `update()` returns delta dict, not mutates env | SimRunner can run theories in sequence, accumulate deltas, apply once — no race conditions. |
-| `state_variables.writes` declaration | SimRunner can validate at setup() that no two theories write the same key. |
-| `@register_theory` decorator | Auto-discovery: import the module, it registers itself. No manual registry maintenance. |
-| Parameters as inner Pydantic `BaseModel` | Validated from `TheoryRef.parameters` dict at construction. |
+| `update()` returns delta dict, not mutates env | SimRunner accumulates all deltas and applies once per tick — no ordering race conditions. |
+| `state_variables.writes` declaration | SimRunner validates at setup() that no two theories write the same key. |
+| `@register_theory` raises on duplicate | Silent overwrite would mask import order bugs; better to fail loudly. |
+| Parameters as inner Pydantic `BaseModel` | Validated from `TheoryRef.parameters` dict at construction; `model_validator` can warn on unstable regimes. |
+| Actor-namespaced military_readiness keys | Fearon/Zartman can read arms levels without coupling to Richardson's namespace. |
+| `equilibrium()` method on Richardson | Useful for scenario calibration — compute where the system is headed before running 100 ticks. |
 
 ---
 
