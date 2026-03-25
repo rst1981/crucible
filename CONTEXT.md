@@ -198,6 +198,26 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 
 ---
 
+## Claude Working Rules
+
+Rules and preferences learned across sessions — apply these without being reminded.
+
+### Environment
+- Always `python -m uvicorn` — bare `uvicorn` not on PATH (`AppData\Roaming\Python\Python314\Scripts` missing from PATH)
+- NEVER `vercel deploy` or `npx vercel --prod` — creates duplicate projects (had to delete twice). Frontend deploys via `git push` only. If there's a Vercel build issue, fix in the dashboard.
+
+### Session hygiene
+- Update `## Current Status` in this file at the end of each session (completed work, updated next steps)
+- The Stop hook in `.claude/settings.json` auto-commits and pushes CONTEXT.md when the conversation ends
+
+### Code style preferences
+- Thread-safe RNG: always `rng: random.Random` parameter, never global `random` state
+- Explicit over clever; minimal diff
+- Handle edge cases (0/0 guards, validation on construction) — thoughtfulness > speed
+- Tests: prefer too many over too few; integration over mocks where practical
+
+---
+
 ## How to Use This File
 
 At the start of any Claude session on any device:
