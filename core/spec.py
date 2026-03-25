@@ -29,6 +29,8 @@ class BeliefSpec(BaseModel):
     variance:    float          = 1.0
     # POINT: fixed value
     value:       float          = 0.0
+    # which env key this belief tracks (if different from belief name)
+    maps_to_env_key: str | None = None
 
 
 # ── Desires / objectives ────────────────────────────────────────────────────
