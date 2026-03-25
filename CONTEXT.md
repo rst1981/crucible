@@ -200,21 +200,165 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 
 ## Claude Working Rules
 
-Rules and preferences learned across sessions — apply these without being reminded.
+<!-- memory:start -->
 
-### Environment
-- Always `python -m uvicorn` — bare `uvicorn` not on PATH (`AppData\Roaming\Python\Python314\Scripts` missing from PATH)
-- NEVER `vercel deploy` or `npx vercel --prod` — creates duplicate projects (had to delete twice). Frontend deploys via `git push` only. If there's a Vercel build issue, fix in the dashboard.
+### Feedback & Working Preferences
 
-### Session hygiene
-- Update `## Current Status` in this file at the end of each session (completed work, updated next steps)
-- The Stop hook in `.claude/settings.json` auto-commits and pushes CONTEXT.md when the conversation ends
+**CONTEXT.md auto-sync on conversation end**  
+*User wants CONTEXT.md updated with session progress and auto-committed/pushed to git whenever a conversation ends*
 
-### Code style preferences
-- Thread-safe RNG: always `rng: random.Random` parameter, never global `random` state
-- Explicit over clever; minimal diff
-- Handle edge cases (0/0 guards, validation on construction) — thoughtfulness > speed
-- Tests: prefer too many over too few; integration over mocks where practical
+Always keep CONTEXT.md up to date with what happened in the current session. On conversation end, the Stop hook in `.claude/settings.json` will auto-commit and push it.
+
+**Why:** User wants the context doc to serve as a persistent cross-session record, committed to git so it's always current on GitHub. Memory files are also mirrored into CONTEXT.md so the git repo is self-contained.
+
+**How to apply:**
+- Before the conversation ends, update `## Current Status` in CONTEXT.md (completed work, updated next steps)
+- If new working rules / feedback were learned this session, also update `## Claude Working Rules` in CONTEXT.md
+- Commit and push (or let the Stop hook handle it if no manual commit is needed)
+- Keep the memory files (`C:\Users\rchtk\.claude\projects\d--dev-crucible\memory\`) and CONTEXT.md `## Claude Working Rules` in sync
+
+**Use python -m uvicorn on this machine**  
+*uvicorn CLI not on PATH because user-site Scripts dir missing from PATH; always use python -m uvicorn*
+
+Always use `python -m uvicorn` instead of bare `uvicorn` when starting the API server.
+
+**Why:** uvicorn is installed in user-site packages (`AppData\Roaming\Python\Python314\site-packages`) but the corresponding Scripts directory is not on PATH. The `uvicorn` command is not found in bash.
+
+**How to apply:** Any time you need to start the FastAPI server, use `python -m uvicorn api.main:app ...` instead of `uvicorn api.main:app ...`.
+
+**Never CLI deploy to Vercel**  
+*Never run npx vercel or vercel CLI deploy commands — it creates duplicate projects. Only deploy via git push.*
+
+NEVER run `npx vercel --prod` or any Vercel CLI deploy command. It creates duplicate Vercel projects (hormuz-sim-dashboard) that the user has had to delete twice.
+
+**Why:** The CLI auto-creates new projects when run from subdirectories or when linking is ambiguous. The user's correct project is `hormuz-sim` and it deploys via GitHub webhook on git push.
+
+**How to apply:** For frontend deployments, only use `git push`. Never touch Vercel CLI. If there's a Vercel build issue, tell the user to fix it in the Vercel dashboard — don't try to work around it with CLI deploys.
+
+### Project Context
+
+**Crucible — Agentic Simulation Platform**  
+*New generalized simulation platform for large international consulting firm — clean-slate repo, planning complete, build starting*
+
+Crucible is a proprietary agentic simulation platform enabling the firm to rapidly build, run, and deliver scenario-based models across market sectors for public and private sector clients.
+
+**Why:** Built by one developer (+ Claude) to generalize the Hormuz sim architecture into a reusable consulting platform. Target: 48 hours from client brief to running simulation.
+
+**How to apply:** This is the primary working project. Hormuz sim is reference scenario #1.
+
+---
+
+## Vision
+
+"Hit go and it goes." — Consultant describes a scenario → system researches, scaffolds, runs, and keeps sim calibrated automatically.
+
+### Two Layers
+- **Forge** (internal sandbox) — scoping agent → research → scaffold → run
+- **Portal** (client SaaS) — clean dashboard, snapshots, exportable reports
+
+---
+
+## Core Loop
+
+```
+Free-form text input
+        ↓
+[Scoping Agent] — fires background research immediately (arXiv, SSRN, FRED, World Bank, news)
+  - Research-grounded interview, not a form
+  - Asks informed questions based on what research reveals
+  - Iterates with user, surfacing domain perspectives
+  - Builds SimSpec object conversationally
+        ↓
+[Theory Mapper] → [Sim Factory] → [Dashboard] → [Data Feed Agent]
+```
+
+---
+
+## Research Sources (design-time + runtime)
+- arXiv, SSRN, FRED, World Bank, news/OSINT
+
+## Theory Library
+- Conflict/geopolitics: Richardson, Wittman-Zartman, Fearon
+- Markets: Porter's Five Forces, supply/demand shocks, contagion
+- Org/corporate: principal-agent, institutional theory, diffusion of innovation
+- Macro/policy: Keynesian multipliers, regulatory shock models
+
+---
+
+## Repo Structure
+```
+crucible/
+├── CONTEXT.md               ← living design doc, commit each session
+├── PROPOSAL.md              ← internal pitch document
+├── core/                    # generalized sim engine
+│   ├── agents/              # BDI agent base classes
+│   ├── theories/            # curated theory library
+│   ├── sim_runner.py
+│   └── spec.py              # SimSpec dataclass
+├── forge/                   # scoping agent + research pipeline
+│   ├── scoping_agent.py
+│   ├── researchers/         # arXiv, SSRN, FRED, World Bank, news adapters
+│   └── theory_mapper.py
+├── api/                     # FastAPI backend
+├── web/                     # React frontend (ForgePage, DashboardPage, PortalPage)
+├── scenarios/hormuz/        # reference implementation #1
+└── data/
+```
+
+---
+
+## Build Plan (12 weeks, 1 developer + Claude)
+
+- **Phase 1 (Weeks 1–3):** Core engine, SimSpec, theory library, research adapters, Hormuz port
+- **Phase 2 (Weeks 4–7):** Scoping agent, Forge UI, end-to-end plain-language → running sim
+- **Phase 3 (Weeks 8–12):** Client portal, continuous calibration agent, pilot engagement
+
+---
+
+## Open Questions
+1. Name trademark check for "Crucible" — not yet done
+2. Deployment pattern — likely Railway + Vercel (same as Hormuz)
+3. Research skills (custom Claude Code skills) — user is researching gstack-style skill files for /research-theory, /research-data etc.
+4. Scenario definition standardization — resolved: SimSpec populated via scoping agent
+
+---
+
+## Status
+
+**Date:** March 24, 2026. Repo initialized at `d:/dev/crucible` (GitHub: `rst1981/crucible`). No code yet. CONTEXT.md and PROPOSAL.md written. Ready to begin Phase 1.
+
+**Next step:** Scaffold directory structure, write `core/spec.py` (SimSpec dataclass).
+
+**Hormuz Crisis Simulation — Reference Scenario #1**  
+*Proof of concept sim that Crucible generalizes. Deployed and running. Key architecture and operational notes.*
+
+Operation Epic Fury — Strait of Hormuz crisis simulation. War start: Feb 25, 2026.
+
+**Why:** Proof of concept that validated the core architecture. Becomes Crucible reference scenario #1.
+
+**How to apply:** Reference this when designing Crucible's core engine. Port to `scenarios/hormuz/`.
+
+---
+
+## Deployment
+- **Local:** `d:/dev/hormuz-sim-dashboard`
+- **GitHub:** `rst1981/hormuz-sim` (branch: main)
+- **Backend:** Railway at `hormuz-sim-production-9505.up.railway.app` (Dockerfile.api)
+- **Frontend:** Vercel at `hormuz-sim.vercel.app` — Root Directory=`web`, Framework=Vite
+
+## Architecture
+- 18 BDI agents with Bayesian belief updates
+- Richardson escalation + Wittman-Zartman / Fearon DIA termination theory branches
+- FastAPI backend + React 19 frontend
+- OSINT scraping → Claude API analysis (batched 25/call) → parameter adjustments
+- Named baseline snapshots, APScheduler daily saves
+- `asyncio.to_thread` for Claude API calls (avoid blocking async loop)
+
+## Key Operational Rules
+- Always use `python -m uvicorn` — Scripts not on PATH
+- NEVER use Vercel CLI — only `git push` to deploy frontend
+
+<!-- memory:end -->
 
 ---
 
