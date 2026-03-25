@@ -167,24 +167,38 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 
 ## Current Status
 
-**Date:** March 24, 2026
+**Date:** March 25, 2026
 
-**Phase:** Planning complete. Repo initialized. No code written yet.
+**Phase:** Architecture complete and reviewed. No code written yet. Week 1 begins now.
 
-**Completed this session:**
-- PROPOSAL.md expanded: 30+ theory models across 5 domains, full 7-subsystem architecture
-- DEVPLAN.md written: 12-week plan with weekly task breakdown
-- Directory skeleton scaffolded: all packages initialized with `__init__.py`
-- 3 custom gstack-style skills created: `/research-theory`, `/research-data`, `/scaffold-sim`
-- README.md = DEVPLAN.md (live on GitHub)
-- Stop hook added: auto-commits and pushes CONTEXT.md on conversation end
+**Architecture documents (all committed, all reviewed):**
+- `ARCHITECTURE.md` — engine: SimSpec (Pydantic v2), BDIAgent (BetaBelief/GaussianBelief), TheoryBase (@register_theory), SimRunner (asyncio.to_thread tick loop)
+- `ARCHITECTURE-FORGE.md` — intake: ForgeSession (6-state machine), ScopingAgent (Claude API tool-use, research-first), TheoryMapper, SpecBuilder, GapDetector
+- `ARCHITECTURE-API.md` — persistence (SQLAlchemy Core + Redis), EnsembleRunner (Monte Carlo), NarrativeAgent (AsyncAnthropic), ReportRenderer, DataFeedAgent, SimSpec versioning, full FastAPI surface. Includes "Engineering Review — Corrections" section with 16 pre-implementation fixes.
+- `ARCHITECTURE-THEORIES.md` — full math for all 5 theory modules: Richardson, Fearon, Wittman-Zartman, Keynesian, Porter's. Parameter tables with empirical ranges. Python stubs.
+- `ARCHITECTURE-PORTAL.md` — React 19 + TypeScript frontend: Forge UI (scoping agent chat, sim dashboard), Portal UI (client-facing, read-only), Zustand stores, WebSocket management, auth model (ADMIN/CONSULTANT/CLIENT), multi-tenancy.
+- `TODOS.md` — 13 deferred items with full context, priority, and where-to-start for each.
+- `Amir.md` — 6-page theory briefing for stakeholders: BDI rationale, theory library deliberations, uncertainty design, calibration loop, scoping agent philosophy.
 
-**Next steps (Week 1 — start tomorrow):**
-1. `core/spec.py` — SimSpec dataclass (full Pydantic schema)
-2. `core/agents/base.py` — BDIAgent base class
-3. `core/sim_runner.py` — tick loop
-4. `core/theories/base.py` — theory module interface
-5. Theory stubs × 5 (Richardson, Wittman-Zartman, Fearon, Keynesian, Porter's)
+**Key engineering review findings (all resolved before coding):**
+- `random.seed()` thread-safety bug in EnsembleRunner → `rng: random.Random` param threaded through SimRunner/BDIAgent
+- Sync Anthropic client in async context → AsyncAnthropic everywhere
+- `asyncio.run()` in APScheduler thread → `run_coroutine_threadsafe` with captured main loop
+- O(n²) percentile band computation → pre-built `{(metric_id, tick): [values]}` index
+- Missing SimOrchestrator wiring layer → new `api/orchestrator.py`
+- ForgeSession serialization stubs → `to_dict()/from_dict()` fully specified
+- Gap 5 regression in ReportRenderer → `SimSpec` param + `display_env()` call
+- Transaction atomicity (per-method `commit()`) → caller-controlled via `async with engine.begin()`
+
+**Week 1 — start now:**
+1. `core/spec.py` — SimSpec + EnvKeySpec + SpecDiff (root data contract, everything depends on this)
+2. `core/agents/base.py` — BDIAgent with `rng: random.Random` param, BetaBelief, GaussianBelief
+3. `core/sim_runner.py` — tick loop, `asyncio.to_thread`, on_snapshot/on_metric_threshold callbacks
+4. `core/theories/base.py` — TheoryBase ABC, @register_theory decorator, registry
+5. Theory stubs × 5 — Richardson, Wittman-Zartman, Fearon, Keynesian, Porter's (see ARCHITECTURE-THEORIES.md for full math)
+
+**Reference implementation:**
+- Hormuz sim at `d:/dev/hormuz-sim-dashboard` — 18 BDI agents, running live, port as scenario #1 in Week 12
 
 ---
 
