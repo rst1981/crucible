@@ -137,38 +137,24 @@ This is not a concept. The engine works. Crucible is the platform that makes it 
 
 ## Build Plan
 
-### Phase 1 — Foundation (Weeks 1–4)
-- Core simulation engine (generalized from Hormuz)
+### Phase 1 — Foundation (Weeks 1–3)
+- Core simulation engine (generalized from Hormuz proof of concept)
 - SimSpec schema and theory library (4 domains, 10+ models)
-- First three research adapters (arXiv, FRED, news)
+- Research adapters: arXiv, FRED, World Bank, news
 - Hormuz ported as reference scenario #1
 
-### Phase 2 — Scoping Agent (Weeks 5–8)
+### Phase 2 — Scoping Agent (Weeks 4–7)
 - Conversational intake UI (Forge)
-- Background research pipeline
+- Background research pipeline wired to adapters
 - SimSpec builder with theory mapper
-- End-to-end: description → running simulation
+- End-to-end: plain-language description → running simulation
 
-### Phase 3 — Client Portal (Weeks 9–12)
-- Branded client dashboard
+### Phase 3 — Client Portal & Pilot (Weeks 8–12)
+- Branded client-facing dashboard
 - Snapshot management and export
-- Continuous calibration agent
-- Second reference scenario (TBD domain)
-
-### Phase 4 — Pilot Engagement (Weeks 13–16)
-- Deploy on a live client engagement
-- Validate turnaround time (target: 48 hours from brief to running sim)
-- Collect feedback, iterate
-
----
-
-## What We're Asking For
-
-- **Alignment** on Crucible as a firm priority
-- **One engagement** in the next quarter to pilot the platform
-- **Time** for the development team to build Phase 1–2 alongside current work
-
-Crucible is a long-term competitive advantage. The firms that can model complex systems dynamically — and keep those models current — will consistently deliver better advice than those that can't.
+- Continuous calibration agent (live data feeds)
+- Deploy on a live engagement — target turnaround: 48 hours from brief to running sim
+- Second reference scenario built from pilot engagement
 
 ---
 
