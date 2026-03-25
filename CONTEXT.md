@@ -169,15 +169,21 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 
 **Date:** March 25, 2026
 
-**Phase:** Week 1 in progress — core engine layer complete. SimRunner next.
+**Phase:** Week 1 complete. Week 2 starting.
 
-**Test coverage: 242 tests, all passing.**
+**Test coverage: 268 tests, all passing.**
 
 **Implemented (Week 1):**
-- `core/spec.py` — SimSpec root contract (Pydantic v2). BeliefSpec with decay_rate/process_noise/maps_to_env_key. ActorSpec with observation_noise_sigma. EnvKeySpec + display_env() (normalized→display translation). SpecDiff + diff_simspecs() + branch_simspec() (version DAG). 57 tests.
-- `core/agents/base.py` — BDIAgent ABC with tick() coordinator (decay→observe→update→decide order enforced). BetaBelief (alpha>0 validated, decay(), maps_to_env_key). GaussianBelief (0/0 guard, diffuse(), maps_to_env_key). AgentHydrationError. from_spec() factory (propagates all dynamics; raises on duplicate belief names). DefaultBDIAgent (utility-maximizing concrete class). Thread-safe RNG. 131 tests.
-- `core/theories/base.py` + `__init__.py` — TheoryBase ABC (setup/update contract). TheoryStateVariables (reads/writes/initializes). @register_theory decorator (raises on duplicate). get_theory()/list_theories() registry. 32 tests.
-- `core/theories/richardson_arms_race.py` — Full Richardson ODE (k/l/a/b/g/h parameters, dt scaling by tick_unit, stability warning at construction, actor-namespaced env keys, equilibrium() method). 30 tests.
+- `core/spec.py` — SimSpec, BeliefSpec, ActorSpec, TheoryRef, EnvKeySpec, SpecDiff, diff_simspecs(), branch_simspec()
+- `core/agents/base.py` — BDIAgent ABC, DefaultBDIAgent, BetaBelief, GaussianBelief, tick() coordinator (decay→observe→update→decide), from_spec() factory, thread-safe RNG
+- `core/theories/base.py` + `__init__.py` — TheoryBase ABC, TheoryStateVariables, @register_theory decorator, get_theory()/list_theories() registry
+- `core/theories/richardson_arms_race.py` — full Richardson ODE (k/l/a/b/g/h, dt scaling, stability warning, equilibrium())
+- `core/theories/fearon_bargaining.py` — private info + commitment problem conflict mechanisms
+- `core/theories/wittman_zartman.py` — MHS + ripeness + negotiation probability
+- `core/theories/keynesian_multiplier.py` — multiplier, signed shock encoding, Okun's Law
+- `core/theories/porter_five_forces.py` — five force variables + profitability
+- `core/sim_runner.py` — tick engine, snapshots, triggers, thread-safe, asyncio-compatible
+- `requirements.txt` — pinned Python deps
 
 **Architecture documents (all current):**
 - `ARCHITECTURE.md` — engine: SimSpec, BDIAgent, TheoryBase, SimRunner design
@@ -188,10 +194,10 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 - `TODOS.md` — 13 deferred items with priority and context
 - `Amir.md` — 7-section stakeholder briefing
 
-**Week 1 — remaining:**
-1. `core/sim_runner.py` — tick loop, asyncio.to_thread, on_snapshot/on_metric_threshold callbacks
-2. Theory stubs — Wittman-Zartman, Fearon, Keynesian Multiplier, Porter's Five Forces
-3. `requirements.txt` — pin Python deps
+**Week 2 — next:**
+1. Research adapters (arXiv, SSRN, FRED, World Bank, news/RSS)
+2. Hormuz scenario port (`scenarios/hormuz/`)
+3. Roadmap discussion: path to launchable app
 
 **Reference implementation:**
 - Hormuz sim at `d:/dev/hormuz-sim-dashboard` — 18 BDI agents, running live, port as scenario #1 in Week 3
