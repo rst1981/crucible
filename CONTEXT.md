@@ -238,7 +238,7 @@ NEVER run `npx vercel --prod` or any Vercel CLI deploy command. It creates dupli
 ### Project Context
 
 **Crucible — Agentic Simulation Platform**  
-*New generalized simulation platform for large international consulting firm — clean-slate repo, planning complete, build starting*
+*Generalized simulation platform for consulting firm — Week 1 (core engine) complete, 268 tests green*
 
 Crucible is a proprietary agentic simulation platform enabling the firm to rapidly build, run, and deliver scenario-based models across market sectors for public and private sector clients.
 
@@ -325,9 +325,24 @@ crucible/
 
 ## Status
 
-**Date:** March 24, 2026. Repo initialized at `d:/dev/crucible` (GitHub: `rst1981/crucible`). No code yet. CONTEXT.md and PROPOSAL.md written. Ready to begin Phase 1.
+**Date:** March 25, 2026. **Week 1 complete.** All core engine modules built and tested.
 
-**Next step:** Scaffold directory structure, write `core/spec.py` (SimSpec dataclass).
+### Week 1 delivered (268 tests, all green):
+- `core/spec.py` — SimSpec, BeliefSpec, ActorSpec, TheoryRef, all supporting types
+- `core/agents/base.py` — BDIAgent, DefaultBDIAgent, BetaBelief, GaussianBelief, tick() coordinator
+- `core/theories/base.py` + `__init__.py` — TheoryBase ABC, registry with duplicate-check
+- `core/theories/richardson_arms_race.py` — full Richardson ODE + equilibrium()
+- `core/theories/fearon_bargaining.py` — private info + commitment problem conflict mechanisms
+- `core/theories/wittman_zartman.py` — MHS + ripeness + negotiation probability
+- `core/theories/keynesian_multiplier.py` — multiplier, signed shock encoding, Okun's Law
+- `core/theories/porter_five_forces.py` — five force variables + profitability
+- `core/sim_runner.py` — tick engine, snapshots, triggers, thread-safe, asyncio-compatible
+- `requirements.txt`, ARCHITECTURE.md, README.md, CONTEXT.md all updated
+
+### Next: Week 2
+- Research adapters (arXiv, SSRN, FRED, World Bank, news/RSS)
+- Hormuz scenario port (`scenarios/hormuz/`)
+- Discuss roadmap: path to launchable app (user requested this conversation)
 
 **Hormuz Crisis Simulation — Reference Scenario #1**  
 *Proof of concept sim that Crucible generalizes. Deployed and running. Key architecture and operational notes.*
