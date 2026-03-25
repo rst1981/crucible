@@ -2038,6 +2038,690 @@ No circular imports. `api/` depends on `core/` and `forge/`. `core/` has no `api
 ---
 
 Next: ARCHITECTURE-PORTAL.md — client-facing Portal layer: React component tree, chart components consuming EnsembleResult bands and narrative feed, snapshot comparison UI, report download flow, authentication and multi-tenancy model.
+
+---
+
+## Engineering Review — Corrections
+
+> Applied after eng-manager review, 2026-03-24. All changes agreed before implementation.
+> Grouped by file. Implement these alongside the base design — they are not optional.
+
+---
+
+### `core/spec.py`
+
+**Move `SpecDiff` here** (not in `core/ensemble.py` or `core/versioning.py`):
+```python
+@dataclass
+class SpecDiff:
+    """One changed field between two SimSpec versions. Lives here so both
+    ensemble.py and versioning.py can import without circular dependencies."""
+    field_path: str
+    old_value:  Any
+    new_value:  Any
+```
+Both `ensemble.py` and `versioning.py` do `from core.spec import SpecDiff`.
+
+---
+
+### `core/agents/base.py` and `core/sim_runner.py`
+
+**Thread-safe RNG — `rng: random.Random` parameter:**
+
+`BDIAgent.__init__` and `SimRunner.__init__` must accept an `rng` parameter:
+
+```python
+# core/agents/base.py
+class BDIAgent:
+    def __init__(self, spec: ActorSpec, rng: random.Random | None = None) -> None:
+        self.rng = rng or random.Random()
+        # All internal randomness uses self.rng, never the global random module
+```
+
+```python
+# core/sim_runner.py
+class SimRunner:
+    def __init__(self, spec: SimSpec, rng: random.Random | None = None) -> None:
+        self.rng = rng or random.Random()
+        # Pass self.rng to each BDIAgent on setup()
+```
+
+**Why:** `random.seed(seed)` in a thread sets global state. With 8 concurrent threads in `EnsembleRunner`, threads stomp each other's seeds. Ensemble results are not reproducible. `random.Random(seed)` is a local instance — fully thread-safe.
+
+**Impact on ARCHITECTURE.md:** Note that `BDIAgent.decide()` and any random sampling in theory `update()` must use the `rng` passed in, not `random.random()` globally.
+
+---
+
+### `core/ensemble.py`
+
+**1. Remove `random.seed(seed)` from `_run_single`:**
+```python
+def _run_single(spec: SimSpec, seed: int) -> dict:
+    # DO NOT call random.seed(seed) — global state, not thread-safe
+    rng = random.Random(seed)       # local instance, thread-safe
+    runner = SimRunner(spec, rng=rng)
+    runner.setup()
+    runner.run()
+    return { ... }
+```
+
+**2. Cache `EnsembleResult` on `EnsembleJob` — no double computation:**
+```python
+@dataclass
+class EnsembleJob:
+    ...
+    failed:   int = 0                              # runs that raised exceptions
+    _result:  EnsembleResult | None = None         # cached after first compute
+```
+
+In `_execute()`:
+```python
+job.status = EnsembleStatus.COMPLETED
+job._result = _compute_result(job)        # compute ONCE, store on job
+for cb in self._listeners.get(job.ensemble_id, []):
+    await cb("job_complete", None, job.n_runs, job.n_runs, job._result)
+```
+
+In `get_result()`:
+```python
+def get_result(self, ensemble_id: str) -> EnsembleResult:
+    job = self._jobs[ensemble_id]
+    if job.status != EnsembleStatus.COMPLETED or job._result is None:
+        raise RuntimeError("Ensemble not yet complete")
+    return job._result    # serve from cache, never recompute
+```
+
+**3. Fix O(n²) percentile band loop — pre-build index:**
+```python
+def _compute_result(job: EnsembleJob) -> EnsembleResult:
+    # Build index once: O(total_records)
+    # Structure: {(metric_id, tick): [values across all runs]}
+    index: dict[tuple[str, int], list[float]] = {}
+    for history in job._run_metric_histories:
+        for r in history:
+            key = (r.metric_id, r.tick)
+            index.setdefault(key, []).append(r.value)
+
+    all_ticks = sorted({tick for (_, tick) in index})
+
+    # Percentile bands: O(metrics × ticks) — no inner scan
+    bands: dict[str, list[PercentileBand]] = {}
+    for metric in job.spec.metrics:
+        metric_bands = []
+        for tick in all_ticks:
+            tick_values = index.get((metric.metric_id, tick), [])
+            if not tick_values:
+                continue
+            s = sorted(tick_values)
+            n = len(s)
+            metric_bands.append(PercentileBand(
+                metric_id=metric.metric_id,
+                env_key=metric.env_key,
+                tick=tick,
+                p10=s[max(0, int(n * 0.10) - 1)],
+                p50=s[int(n * 0.50)],
+                p90=s[min(n - 1, int(n * 0.90))],
+                mean=statistics.mean(tick_values),
+                std=statistics.stdev(tick_values) if len(tick_values) > 1 else 0.0,
+            ))
+        bands[metric.metric_id] = metric_bands
+    ...
+```
+
+**Why:** Original loop was O(runs × ticks² × metrics). With 100 runs × 365 ticks × 5 metrics = ~66M iterations. Index pre-build reduces to O(n) + O(metrics × ticks).
+
+**4. `asyncio.gather` with `return_exceptions=True`:**
+```python
+# In _execute():
+async def run_one(run_idx: int) -> None:
+    if job.cancelled:
+        return
+    try:
+        run_seed = job.base_seed + run_idx
+        perturbed_spec = _perturb_spec(job.spec, run_seed, perturb_sigma)
+        result = await loop.run_in_executor(self._executor, _run_single, perturbed_spec, run_seed)
+        job._run_metric_histories.append(result["metric_history"])
+        job._run_final_envs.append(result["final_env"])
+        job.completed += 1
+        for cb in self._listeners.get(job.ensemble_id, []):
+            try:
+                await cb("run_complete", run_idx, job.completed, job.n_runs, result)
+            except Exception:
+                pass
+    except Exception as exc:
+        job.failed += 1
+        logger.warning("Ensemble run %d failed: %r", run_idx, exc)
+
+await asyncio.gather(*[run_one(i) for i in range(job.n_runs)])
+# Note: exceptions are handled inside run_one — gather always completes
+```
+
+Add `n_failed` to `EnsembleResult`:
+```python
+@dataclass
+class EnsembleResult:
+    ...
+    n_failed: int = 0   # runs that raised — non-zero means partial results
+```
+
+**5. `asyncio.get_running_loop()` — not `get_event_loop()`:**
+```python
+async def _execute(self, job: EnsembleJob, perturb_sigma: float) -> None:
+    loop = asyncio.get_running_loop()   # not get_event_loop() (deprecated 3.10+)
+```
+
+**6. `EnsembleRunner` is an app-level singleton with job eviction:**
+
+```python
+class EnsembleRunner:
+    ...
+    JOB_TTL_SECONDS = 3600  # evict jobs 1 hour after completion
+
+    def evict(self, ensemble_id: str) -> None:
+        """
+        Evict raw run data from a completed job. Keeps status and cached result.
+        Call after results have been served to the client.
+        """
+        job = self._jobs.get(ensemble_id)
+        if job and job.status == EnsembleStatus.COMPLETED:
+            job._run_metric_histories.clear()
+            job._run_final_envs.clear()
+
+    async def cleanup_stale_jobs(self) -> int:
+        """
+        Remove jobs older than JOB_TTL_SECONDS. Called by a background task
+        in the FastAPI lifespan every 30 minutes.
+        Returns count of evicted jobs.
+        """
+        now = asyncio.get_event_loop().time()
+        to_remove = [
+            eid for eid, job in self._jobs.items()
+            if job.status in (EnsembleStatus.COMPLETED, EnsembleStatus.FAILED, EnsembleStatus.CANCELLED)
+        ]
+        for eid in to_remove:
+            self._jobs.pop(eid, None)
+            self._listeners.pop(eid, None)
+        return len(to_remove)
+```
+
+Add to `api/main.py` lifespan:
+```python
+# Background cleanup task — runs every 30 minutes
+async def _cleanup_loop(runner: EnsembleRunner):
+    while True:
+        await asyncio.sleep(1800)
+        n = await runner.cleanup_stale_jobs()
+        if n:
+            logger.info("EnsembleRunner evicted %d stale jobs", n)
+
+# In lifespan, after creating ensemble_runner:
+app.state.ensemble_runner = EnsembleRunner()
+asyncio.create_task(_cleanup_loop(app.state.ensemble_runner))
+```
+
+---
+
+### `api/session_store.py` — `ForgeSession` serialization contract
+
+Replace the `...` stubs with explicit `to_dict` / `from_dict` on `ForgeSession`:
+
+```python
+# forge/session.py — add these methods to ForgeSession dataclass
+
+def to_dict(self) -> dict:
+    """
+    Serialize ForgeSession to a JSON-safe dict.
+    Rules:
+    - ForgeState enum → .value (str)
+    - SimSpec (Pydantic) → .model_dump()
+    - SpecGap, ResearchResult (dataclasses) → dataclasses.asdict()
+    - ForgeMessage.content: str or list[dict] (Claude tool-use blocks)
+      → stored as-is (already JSON-serializable)
+    - ResearchContext → dataclasses.asdict()
+    """
+    import dataclasses
+    return {
+        "session_id":           self.session_id,
+        "state":                self.state.value,
+        "simspec":              self.simspec.model_dump() if self.simspec else None,
+        "conversation_history": [
+            {"role": m.role, "content": m.content}
+            for m in self.conversation_history
+        ],
+        "gaps":                 [dataclasses.asdict(g) for g in self.gaps],
+        "research_context":     dataclasses.asdict(self.research_context) if self.research_context else None,
+        "created_at":           self.created_at,
+        "updated_at":           self.updated_at,
+    }
+
+@classmethod
+def from_dict(cls, data: dict) -> "ForgeSession":
+    """
+    Reconstruct ForgeSession from serialized dict.
+    Rules:
+    - state: ForgeState(data["state"])
+    - simspec: SimSpec.model_validate(data["simspec"]) if present
+    - conversation_history: reconstruct ForgeMessage list
+    - gaps: reconstruct SpecGap list
+    - research_context: reconstruct ResearchContext if present
+    """
+    from forge.session import ForgeState, ForgeMessage, SpecGap, ResearchContext
+    return cls(
+        session_id=data["session_id"],
+        state=ForgeState(data["state"]),
+        simspec=SimSpec.model_validate(data["simspec"]) if data.get("simspec") else None,
+        conversation_history=[
+            ForgeMessage(role=m["role"], content=m["content"])
+            for m in data.get("conversation_history", [])
+        ],
+        gaps=[SpecGap(**g) for g in data.get("gaps", [])],
+        research_context=(
+            ResearchContext(**data["research_context"])
+            if data.get("research_context") else None
+        ),
+        created_at=data.get("created_at", 0.0),
+        updated_at=data.get("updated_at", 0.0),
+    )
+```
+
+Update `_serialize_session` / `_deserialize_session` in `api/session_store.py`:
+```python
+def _serialize_session(session: ForgeSession) -> str:
+    return json.dumps(session.to_dict())
+
+def _deserialize_session(data: str) -> ForgeSession:
+    return ForgeSession.from_dict(json.loads(data))
+```
+
+---
+
+### `api/db/repository.py` — Engine injection + caller-controlled transactions
+
+**Change constructor:**
+```python
+class SimRepository:
+    """All DB access for the simulations domain. Accepts an AsyncEngine.
+    Each write method acquires its own short-lived connection.
+    For atomic multi-step operations, use:
+        async with engine.begin() as conn:
+            repo = SimRepository(conn)
+            await repo.save_snapshot(...)
+            await repo.update_sim_state(...)
+    """
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        self._engine = engine
+```
+
+**Remove `commit()` from all methods.** Each method acquires its own connection for single-step operations:
+```python
+async def save_snapshot(self, sim_id: str, snap: SimSnapshot) -> str:
+    snapshot_id = str(uuid.uuid4())
+    async with self._engine.begin() as conn:
+        await conn.execute(snapshots.insert().values(...))
+    return snapshot_id
+```
+
+**For atomic multi-step (used by SimOrchestrator):**
+```python
+# SimOrchestrator pattern — explicit transaction:
+async with engine.begin() as conn:
+    repo = SimRepository.__new__(SimRepository)
+    repo._engine = None
+    repo._conn = conn   # or add a SimRepository.from_conn(conn) classmethod
+    await repo._save_snapshot_tx(conn, sim_id, snap)
+    await repo._save_narrative_tx(conn, sim_id, tick, content, triggered_by)
+    await repo._update_state_tx(conn, sim_id, "COMPLETED")
+# commit happens automatically on __aexit__
+```
+
+Add `tick_start`, `tick_end`, `limit`, `offset` to `get_metrics`:
+```python
+async def get_metrics(
+    self,
+    sim_id:     str,
+    metric_id:  str | None = None,
+    tick_start: int | None = None,
+    tick_end:   int | None = None,
+    limit:      int = 1000,
+    offset:     int = 0,
+) -> list[dict]:
+    async with self._engine.connect() as conn:
+        q = select(metric_records).where(metric_records.c.sim_id == sim_id)
+        if metric_id:
+            q = q.where(metric_records.c.metric_id == metric_id)
+        if tick_start is not None:
+            q = q.where(metric_records.c.tick >= tick_start)
+        if tick_end is not None:
+            q = q.where(metric_records.c.tick <= tick_end)
+        q = q.order_by(metric_records.c.tick).limit(limit).offset(offset)
+        result = await conn.execute(q)
+        return [dict(row) for row in result]
+```
+
+---
+
+### `SimOrchestrator` — new component (add as new section before API Endpoints)
+
+```python
+# api/orchestrator.py
+
+class SimOrchestrator:
+    """
+    Wires SimRunner + NarrativeAgent + SimRepository for a single simulation run.
+    API endpoints call SimOrchestrator, not individual components.
+
+    ┌─────────────────────────────────────────────────────┐
+    │  SimOrchestrator                                     │
+    │                                                      │
+    │  spec ──► SimRunner ──► tick loop                   │
+    │                │                                     │
+    │                ├──► NarrativeAgent.on_snapshot()     │
+    │                │    (Claude API → NarrativeEntry)    │
+    │                │          │                          │
+    │                │          └──► SimRepository         │
+    │                │               .save_narrative_entry │
+    │                │                                     │
+    │                └──► bulk_save_metrics (every 10t)   │
+    │                     SimRepository.save_snapshot      │
+    │                                                      │
+    │  on_complete: atomic txn:                            │
+    │    save_final_snapshot                               │
+    │    save_final_narrative                              │
+    │    update_sim_state → COMPLETED                      │
+    └─────────────────────────────────────────────────────┘
+    """
+
+    METRIC_BATCH_SIZE = 10  # flush metrics every N ticks
+
+    def __init__(
+        self,
+        engine:      AsyncEngine,
+        anthropic:   AsyncAnthropic,
+    ) -> None:
+        self._engine    = engine
+        self._anthropic = anthropic
+        self._repo      = SimRepository(engine)
+
+    async def run_single(self, sim_id: str, spec: SimSpec) -> None:
+        """
+        Full single-run lifecycle:
+        1. State: CONFIGURED → RUNNING
+        2. Wire NarrativeAgent callbacks
+        3. Run SimRunner (asyncio.to_thread)
+        4. Flush remaining metrics
+        5. Atomic: save final snapshot + narrative + state → COMPLETED
+        On exception: state → FAILED, error persisted
+        """
+        await self._repo.update_sim_state(sim_id, "RUNNING")
+        rng = random.Random()   # no seed for single run (user didn't request reproducibility)
+        runner = SimRunner(spec, rng=rng)
+        agent  = NarrativeAgent(
+            spec=spec,
+            client=self._anthropic,
+            on_entry=lambda e: self._repo.save_narrative_entry(
+                sim_id, e.tick, e.content, e.triggered_by
+            ),
+        )
+        runner.on_snapshot = agent.on_snapshot
+        runner.on_metric_threshold = agent.on_metric_threshold
+
+        metric_buffer: list[MetricRecord] = []
+
+        async def on_tick(tick: int, metrics: list[MetricRecord]) -> None:
+            metric_buffer.extend(metrics)
+            if len(metric_buffer) >= self.METRIC_BATCH_SIZE:
+                await self._repo.bulk_save_metrics(sim_id, metric_buffer)
+                metric_buffer.clear()
+
+        runner.on_tick = on_tick
+
+        try:
+            await asyncio.to_thread(runner.run)
+            # Flush remaining metrics
+            if metric_buffer:
+                await self._repo.bulk_save_metrics(sim_id, metric_buffer)
+            # Final narrative
+            await agent.on_final(runner.current_tick, runner.get_current_env())
+            # Atomic completion
+            async with self._engine.begin() as conn:
+                await conn.execute(
+                    update(simulations).where(simulations.c.sim_id == sim_id)
+                    .values(state="COMPLETED", completed_at=func.now())
+                )
+        except Exception as exc:
+            logger.exception("SimRunner failed for sim_id=%s", sim_id)
+            async with self._engine.begin() as conn:
+                await conn.execute(
+                    update(simulations).where(simulations.c.sim_id == sim_id)
+                    .values(state="FAILED", error=str(exc))
+                )
+            raise
+
+    async def run_ensemble(
+        self,
+        sim_id:        str,
+        spec:          SimSpec,
+        ensemble_runner: EnsembleRunner,
+        n_runs:        int = 100,
+        base_seed:     int | None = None,
+        perturb_sigma: float = 0.0,
+    ) -> str:
+        """
+        Launch EnsembleRunner. Returns ensemble_id.
+        Persists EnsembleResult to DB on completion (via listener callback).
+        """
+        ensemble_id = await ensemble_runner.launch(
+            sim_id=sim_id,
+            spec=spec,
+            n_runs=n_runs,
+            base_seed=base_seed,
+            perturb_sigma=perturb_sigma,
+        )
+        # Persist result to DB on job_complete
+        async def on_event(event_type, *args):
+            if event_type == "job_complete":
+                result: EnsembleResult = args[-1]
+                await self._persist_ensemble_result(sim_id, ensemble_id, result)
+        ensemble_runner.add_listener(ensemble_id, on_event)
+        return ensemble_id
+
+    async def _persist_ensemble_result(
+        self, sim_id: str, ensemble_id: str, result: EnsembleResult
+    ) -> None:
+        """Persist EnsembleResult summary to simulations table."""
+        import json
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                update(simulations).where(simulations.c.sim_id == sim_id)
+                .values(
+                    state="COMPLETED",
+                    completed_at=func.now(),
+                    runner_config_json=json.dumps({
+                        "ensemble_id":  ensemble_id,
+                        "n_completed":  result.n_completed,
+                        "n_failed":     result.n_failed,
+                    }),
+                )
+            )
+```
+
+---
+
+### `core/narrative.py` — `AsyncAnthropic` everywhere
+
+```python
+from anthropic import AsyncAnthropic   # not Anthropic
+
+class NarrativeAgent:
+    def __init__(
+        self,
+        spec:     SimSpec,
+        client:   AsyncAnthropic | None = None,
+        on_entry: Callable[[NarrativeEntry], Coroutine] | None = None,
+    ) -> None:
+        self.client = client or AsyncAnthropic()
+
+    async def _generate(self, tick: int, trigger: str, context: dict) -> NarrativeEntry:
+        response = await self.client.messages.create(   # await — non-blocking
+            model="claude-opus-4-6",
+            max_tokens=200,
+            system=self.SYSTEM_PROMPT,
+            messages=[...],
+        )
+        ...
+```
+
+**Also applies to `ScopingAgent` in `forge/scoping.py` — use `AsyncAnthropic` throughout.**
+
+**Model version:** Update all references from `claude-opus-4-5` to `claude-opus-4-6` (current).
+
+---
+
+### `core/calibration.py` — `DataFeedAgent` event loop bridging
+
+```python
+class DataFeedAgent:
+    def __init__(self) -> None:
+        self._scheduler = BackgroundScheduler()
+        self._active_jobs: dict[str, str] = {}
+        self._loop: asyncio.AbstractEventLoop | None = None  # captured at start()
+
+    def start(self) -> None:
+        self._loop = asyncio.get_event_loop()   # capture BEFORE scheduler starts
+        self._scheduler.start()
+
+    def register_simulation(self, sim_id: str, spec_json: str) -> None:
+        job = self._scheduler.add_job(
+            func=self._calibration_job,    # bound method — has access to self._loop
+            trigger=IntervalTrigger(hours=self.INTERVAL_HOURS),
+            args=[sim_id, spec_json],
+            ...
+        )
+
+    def _calibration_job(self, sim_id: str, spec_json: str) -> None:
+        """Runs in APScheduler thread. Bridges to main event loop."""
+        if self._loop is None or not self._loop.is_running():
+            logger.error("Main event loop not available for calibration job sim_id=%s", sim_id)
+            return
+        future = asyncio.run_coroutine_threadsafe(
+            _async_calibration(sim_id, spec_json),
+            self._loop,
+        )
+        try:
+            future.result(timeout=300)   # 5 min max per calibration cycle
+        except Exception:
+            logger.exception("Calibration job failed for sim_id=%s", sim_id)
+```
+
+**Why:** `asyncio.run()` creates a new event loop in the thread. Asyncpg connections are bound to the loop they were created on. `run_coroutine_threadsafe` submits the coroutine to the existing main loop instead, keeping all DB/Claude operations on the same loop.
+
+---
+
+### `api/main.py` — CORS config from environment
+
+```python
+# api/config.py (new file)
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    DATABASE_URL:    str = "sqlite+aiosqlite:///./crucible.db"
+    REDIS_URL:       str = "redis://localhost:6379"
+    ANTHROPIC_API_KEY: str = ""
+    CORS_ORIGINS:    list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    MAX_ENSEMBLE_WORKERS: int = 8
+    # ... other vars from environment variable reference table
+
+    class Config:
+        env_file = ".env"
+
+settings = Settings()
+```
+
+```python
+# api/main.py
+from api.config import settings
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,   # not ["*"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+---
+
+### `core/reports.py` — Gap 5 in render_markdown
+
+```python
+def render_markdown(
+    self,
+    spec:      SimSpec,          # ADDED — needed for display_env()
+    narrative: list[dict],
+    snapshots: list[dict],
+    metrics:   list[dict],
+    ensemble:  Any | None = None,
+) -> bytes:
+    ...
+    if snapshots:
+        for snap in snapshots:
+            env_raw = json.loads(snap["env_json"])
+            env = spec.display_env(env_raw)   # denormalize — shows display values
+            # Sort by normalized value, display the display value
+            top = sorted(env.items(), key=lambda x: x[1].get("normalized", 0), reverse=True)[:10]
+            lines.append("| Variable | Value | Unit |")
+            lines.append("|----------|-------|------|")
+            for k, entry in top:
+                name = entry.get("display_name", k)
+                val  = entry.get("display", entry.get("normalized", 0))
+                unit = entry.get("unit", "")
+                lines.append(f"| {name} | {val:.3f} | {unit} |")
+```
+
+**Why:** Reports showing `iranian_sanctions_severity: 0.742` to consulting clients undermine the entire EnvKeySpec investment. `display_env()` translates to `74.2 billion USD` or whatever scale was specified.
+
+---
+
+### Environment variable reference (updated)
+
+Add `CORS_ORIGINS` to the table:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `DATABASE_URL` | Yes | `sqlite+aiosqlite:///./crucible.db` | DB connection string |
+| `REDIS_URL` | Yes | `redis://localhost:6379` | Redis for ForgeSession |
+| `ANTHROPIC_API_KEY` | Yes | — | Claude API — Narrative, DataFeedAgent, ScopingAgent |
+| `FRED_API_KEY` | Yes | — | FRED economic data |
+| `NEWS_API_KEY` | Yes | — | NewsAPI calibration research |
+| `CORS_ORIGINS` | No | `["http://localhost:3000","http://localhost:5173"]` | Allowed origins. **Must be set to Portal domain before enterprise deploy.** |
+| `MAX_ENSEMBLE_WORKERS` | No | `8` | ThreadPoolExecutor size |
+| `MAX_CONCURRENT_ENSEMBLES` | No | `3` | Cap on running ensemble jobs |
+| `CALIBRATION_DRIFT_THRESHOLD` | No | `0.05` | Normalized units |
+
+---
+
+### Summary of all corrections
+
+| # | File | Fix | Issue |
+|---|------|-----|-------|
+| 1 | `core/spec.py` | Move `SpecDiff` here | DRY — was in ensemble.py |
+| 2 | `core/agents/base.py` | `rng: random.Random` param | Thread-safe seeding |
+| 3 | `core/sim_runner.py` | `rng: random.Random` param, pass to agents | Thread-safe seeding |
+| 4 | `core/ensemble.py` | Remove `random.seed()`, use `random.Random(seed)` in `_run_single` | Thread-safe seeding |
+| 5 | `core/ensemble.py` | Cache `_result` on `EnsembleJob`, compute once | Double compute |
+| 6 | `core/ensemble.py` | Pre-build `{(metric_id, tick): [values]}` index | O(n²) → O(n) bands |
+| 7 | `core/ensemble.py` | `return_exceptions=True` + `job.failed` counter | Cascade failure on 1 bad run |
+| 8 | `core/ensemble.py` | `asyncio.get_running_loop()` | Deprecated 3.10+ |
+| 9 | `core/ensemble.py` | Singleton + `evict()` + 30min cleanup task | Memory leak |
+| 10 | `core/narrative.py` | `AsyncAnthropic` + `await` | Sync client blocks event loop |
+| 11 | `core/calibration.py` | `run_coroutine_threadsafe` with captured main loop | `asyncio.run()` creates orphan loop |
+| 12 | `api/db/repository.py` | `AsyncEngine` injection, `commit()` removed, `get_metrics` pagination | Connection lifecycle + atomicity |
+| 13 | `api/orchestrator.py` | New `SimOrchestrator` class | Missing wiring layer |
+| 14 | `api/session_store.py` | `ForgeSession.to_dict()` / `from_dict()` fully specified | Serialization stubs |
+| 15 | `api/main.py` | `settings.CORS_ORIGINS` from env | CORS wildcard |
+| 16 | `core/reports.py` | `simspec: SimSpec` param, call `display_env()` | Gap 5 regression in reports |
 ```
 
 ---
