@@ -721,3 +721,271 @@ class TestThreadSafeRng:
         for _ in range(20):
             agent.observe_environment({"x": 0.5})
         assert random.getstate() == before
+
+
+# ── AgentHydrationError ───────────────────────────────────────────────────────
+
+class TestAgentHydrationError:
+    def test_raised_on_duplicate_belief_names(self):
+        from core.agents.base import AgentHydrationError
+        spec = ActorSpec(
+            name="Iran",
+            beliefs=[
+                BeliefSpec(name="p_strike"),
+                BeliefSpec(name="p_strike"),  # duplicate
+            ],
+        )
+        with pytest.raises(AgentHydrationError, match="duplicate belief name"):
+            SimpleAgent.from_spec(spec, make_rng(0))
+
+    def test_importable_from_core_agents(self):
+        from core.agents import AgentHydrationError
+        assert AgentHydrationError is not None
+
+
+# ── BetaBelief: alpha/beta validation ─────────────────────────────────────────
+
+class TestBetaBeliefValidation:
+    def test_alpha_zero_raises(self):
+        with pytest.raises(ValueError, match="alpha and beta must be > 0"):
+            BetaBelief("x", alpha=0.0, beta=1.0)
+
+    def test_beta_zero_raises(self):
+        with pytest.raises(ValueError, match="alpha and beta must be > 0"):
+            BetaBelief("x", alpha=1.0, beta=0.0)
+
+    def test_negative_alpha_raises(self):
+        with pytest.raises(ValueError):
+            BetaBelief("x", alpha=-0.5, beta=1.0)
+
+    def test_valid_sub_one_alpha_ok(self):
+        b = BetaBelief("x", alpha=0.5, beta=0.5)
+        assert b.mean == pytest.approx(0.5)
+
+
+# ── GaussianBelief: 0/0 guard ─────────────────────────────────────────────────
+
+class TestGaussianBeliefZeroGuard:
+    def test_zero_variance_zero_obs_variance_no_crash(self):
+        """POINT belief (variance=0) with noise_sigma=0 must not raise ZeroDivisionError."""
+        g = GaussianBelief("fixed", mean=0.7, variance=0.0)
+        g.update(0.9, obs_variance=0.0)
+        assert g.mean == pytest.approx(0.7)  # certain belief unchanged
+
+    def test_zero_obs_variance_nonzero_self_variance_updates(self):
+        """Perfect observation (obs_variance=0) with uncertain belief → jump to observation."""
+        g = GaussianBelief("gdp", mean=0.0, variance=1.0)
+        g.update(0.8, obs_variance=0.0)
+        assert g.mean == pytest.approx(0.8)
+
+    def test_nonzero_normal_case_unchanged(self):
+        """Normal path still works correctly after adding the guard."""
+        g = GaussianBelief("gdp", mean=0.0, variance=1.0)
+        g.update(1.0, obs_variance=1.0)
+        assert g.mean == pytest.approx(0.5)
+
+
+# ── from_spec: dynamics propagation ──────────────────────────────────────────
+
+class TestFromSpecDynamicsPropagation:
+    def test_decay_rate_propagated(self):
+        spec = ActorSpec(
+            name="Iran",
+            beliefs=[BeliefSpec(name="p", dist_type=BeliefDistType.BETA, decay_rate=0.9)],
+        )
+        agent = SimpleAgent.from_spec(spec, make_rng(0))
+        assert agent.beliefs["p"].decay_rate == pytest.approx(0.9)
+
+    def test_process_noise_propagated(self):
+        spec = ActorSpec(
+            name="Iran",
+            beliefs=[BeliefSpec(name="gdp", dist_type=BeliefDistType.GAUSSIAN,
+                                process_noise=0.02)],
+        )
+        agent = SimpleAgent.from_spec(spec, make_rng(0))
+        assert agent.beliefs["gdp"].process_noise == pytest.approx(0.02)
+
+    def test_observation_noise_sigma_propagated(self):
+        spec = ActorSpec(name="Iran", observation_noise_sigma=0.05)
+        agent = SimpleAgent.from_spec(spec, make_rng(0))
+        assert agent.observation_noise_sigma == pytest.approx(0.05)
+
+    def test_default_observation_noise_sigma(self):
+        spec  = ActorSpec(name="Iran")
+        agent = SimpleAgent.from_spec(spec, make_rng(0))
+        assert agent.observation_noise_sigma == pytest.approx(0.02)
+
+    def test_point_belief_process_noise_propagated(self):
+        spec = ActorSpec(
+            name="Iran",
+            beliefs=[BeliefSpec(name="fixed", dist_type=BeliefDistType.POINT,
+                                value=0.7, process_noise=0.01)],
+        )
+        agent = SimpleAgent.from_spec(spec, make_rng(0))
+        g = agent.beliefs["fixed"]
+        assert isinstance(g, GaussianBelief)
+        assert g.process_noise == pytest.approx(0.01)
+
+
+# ── BDIAgent.tick() coordinator ───────────────────────────────────────────────
+
+class TestTickCoordinator:
+    def test_returns_actions(self):
+        action = Action("a1", "environment", parameters={"x": 0.1})
+        agent  = make_agent(actions=[action])
+        result = agent.tick({"x": 0.5}, tick_num=1)
+        assert result == [action]
+
+    def test_observations_stored(self):
+        agent = make_agent(noise=0.0)
+        agent.tick({"tension": 0.5}, tick_num=1)
+        assert agent._observations["tension"] == pytest.approx(0.5)
+
+    def test_beliefs_updated_via_tick(self):
+        b     = BetaBelief("tension")
+        agent = make_agent(beliefs={"tension": b}, noise=0.0)
+        agent.tick({"tension": 0.9}, tick_num=1)
+        assert b.alpha > 1.0  # updated from observation
+
+    def test_beliefs_decayed_via_tick(self):
+        b     = BetaBelief("x", alpha=10.0, beta=1.0, decay_rate=0.8)
+        agent = make_agent(beliefs={"x": b}, noise=0.0)
+        agent.tick({"x": 0.5}, tick_num=1)
+        assert b.alpha < 10.0  # decayed before update
+
+    def test_recharge_not_called_by_tick(self):
+        """tick() must NOT recharge capabilities — that's SimRunner's job."""
+        cap   = make_capability(capacity=1.0, cost=0.5, current=0.5, recovery_rate=0.5)
+        agent = make_agent(capabilities={"naval": cap})
+        agent.tick({}, tick_num=1)
+        assert cap["current"] == pytest.approx(0.5)  # unchanged
+
+    def test_tick_deterministic_same_seed(self):
+        env  = {"tension": 0.5}
+        b1   = BetaBelief("tension", alpha=1.0, beta=1.0)
+        b2   = BetaBelief("tension", alpha=1.0, beta=1.0)
+        a1   = make_agent(beliefs={"tension": b1}, noise=0.05, rng=make_rng(42))
+        a2   = make_agent(beliefs={"tension": b2}, noise=0.05, rng=make_rng(42))
+        a1.tick(env, 1)
+        a2.tick(env, 1)
+        assert b1.alpha == pytest.approx(b2.alpha)
+
+
+# ── DefaultBDIAgent ───────────────────────────────────────────────────────────
+
+class TestDefaultBDIAgent:
+    from core.agents.base import DefaultBDIAgent
+
+    def _make_default(
+        self,
+        owned_env_keys=None,
+        desires=None,
+        capabilities=None,
+        push_delta=0.05,
+    ):
+        from core.agents.base import DefaultBDIAgent
+        return DefaultBDIAgent(
+            actor_id="a1",
+            name="Iran",
+            owned_env_keys=owned_env_keys or [],
+            desires=desires or [],
+            capabilities=capabilities or {},
+            push_delta=push_delta,
+            rng=make_rng(0),
+        )
+
+    def test_returns_empty_no_desires(self):
+        agent = self._make_default(owned_env_keys=["x"], capabilities={"c": make_capability()})
+        assert agent.decide({}, 1) == []
+
+    def test_returns_empty_no_capabilities(self):
+        agent = self._make_default(
+            owned_env_keys=["revenue"],
+            desires=[make_desire("Rev", "revenue")],
+        )
+        assert agent.decide({"revenue": 0.5}, 1) == []
+
+    def test_returns_empty_no_owned_keys(self):
+        agent = self._make_default(
+            owned_env_keys=[],
+            desires=[make_desire("Rev", "revenue")],
+            capabilities={"c": make_capability()},
+        )
+        assert agent.decide({"revenue": 0.5}, 1) == []
+
+    def test_pushes_owned_key_in_desire_direction(self):
+        agent = self._make_default(
+            owned_env_keys=["revenue"],
+            desires=[make_desire("Rev", "revenue", direction=1.0)],
+            capabilities={"c": make_capability()},
+            push_delta=0.05,
+        )
+        actions = agent.decide({"revenue": 0.5}, 1)
+        assert len(actions) == 1
+        assert actions[0].parameters["revenue"] == pytest.approx(0.05)
+
+    def test_pushes_negative_direction(self):
+        agent = self._make_default(
+            owned_env_keys=["tension"],
+            desires=[make_desire("Calm", "tension", direction=-1.0)],
+            capabilities={"c": make_capability()},
+            push_delta=0.05,
+        )
+        actions = agent.decide({"tension": 0.5}, 1)
+        assert actions[0].parameters["tension"] == pytest.approx(-0.05)
+
+    def test_skips_exhausted_capability(self):
+        cap   = make_capability(cost=0.5, current=0.0)  # exhausted
+        agent = self._make_default(
+            owned_env_keys=["revenue"],
+            desires=[make_desire("Rev", "revenue")],
+            capabilities={"c": cap},
+        )
+        assert agent.decide({"revenue": 0.5}, 1) == []
+
+    def test_action_id_contains_tick(self):
+        agent = self._make_default(
+            owned_env_keys=["revenue"],
+            desires=[make_desire("Rev", "revenue")],
+            capabilities={"c": make_capability()},
+        )
+        actions = agent.decide({}, 42)
+        assert "42" in actions[0].action_id
+
+    def test_from_spec_sets_owned_env_keys(self):
+        from core.agents.base import DefaultBDIAgent
+        spec = ActorSpec(
+            name="Iran",
+            initial_env_contributions={
+                "iran__military_readiness": 0.7,
+                "iran__oil_revenue": 0.4,
+            },
+        )
+        agent = DefaultBDIAgent.from_spec(spec, make_rng(0))
+        assert set(agent.owned_env_keys) == {"iran__military_readiness", "iran__oil_revenue"}
+
+    def test_from_spec_returns_default_agent_instance(self):
+        from core.agents.base import DefaultBDIAgent
+        spec  = ActorSpec(name="Iran")
+        agent = DefaultBDIAgent.from_spec(spec, make_rng(0))
+        assert isinstance(agent, DefaultBDIAgent)
+
+    def test_importable_from_core_agents(self):
+        from core.agents import DefaultBDIAgent
+        assert DefaultBDIAgent is not None
+
+
+# ── __init__ exports ──────────────────────────────────────────────────────────
+
+class TestCoreAgentsExports:
+    def test_all_exports(self):
+        from core.agents import (
+            Action,
+            AgentHydrationError,
+            BDIAgent,
+            BetaBelief,
+            DefaultBDIAgent,
+            GaussianBelief,
+        )
+        assert all([Action, AgentHydrationError, BDIAgent, BetaBelief,
+                    DefaultBDIAgent, GaussianBelief])

@@ -81,6 +81,28 @@ class TestBeliefSpec:
         ids = {BeliefSpec(name="x").belief_id for _ in range(10)}
         assert len(ids) == 10
 
+    def test_decay_rate_default(self):
+        b = BeliefSpec(name="x")
+        assert b.decay_rate == 1.0
+
+    def test_process_noise_default(self):
+        b = BeliefSpec(name="x")
+        assert b.process_noise == 0.0
+
+    def test_decay_rate_custom(self):
+        b = BeliefSpec(name="x", decay_rate=0.95)
+        assert b.decay_rate == 0.95
+
+    def test_process_noise_custom(self):
+        b = BeliefSpec(name="x", dist_type=BeliefDistType.GAUSSIAN, process_noise=0.01)
+        assert b.process_noise == 0.01
+
+    def test_decay_rate_and_process_noise_roundtrip(self):
+        b = BeliefSpec(name="x", decay_rate=0.9, process_noise=0.05)
+        restored = BeliefSpec.model_validate_json(b.model_dump_json())
+        assert restored.decay_rate == 0.9
+        assert restored.process_noise == 0.05
+
 
 # ── DesireSpec ───────────────────────────────────────────────────────────────
 
@@ -116,6 +138,16 @@ class TestActorSpec:
         assert a.desires == []
         assert a.capabilities == []
         assert a.initial_env_contributions == {}
+        assert a.observation_noise_sigma == 0.02
+
+    def test_observation_noise_sigma_custom(self):
+        a = ActorSpec(name="Iran", observation_noise_sigma=0.05)
+        assert a.observation_noise_sigma == 0.05
+
+    def test_observation_noise_sigma_roundtrip(self):
+        a = ActorSpec(name="Iran", observation_noise_sigma=0.1)
+        restored = ActorSpec.model_validate_json(a.model_dump_json())
+        assert restored.observation_noise_sigma == 0.1
 
     def test_with_components(self):
         a = ActorSpec(

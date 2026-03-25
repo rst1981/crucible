@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import random
 from abc import ABC, abstractmethod
@@ -8,6 +9,18 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from core.spec import ActorSpec, DesireSpec
+
+logger = logging.getLogger(__name__)
+
+
+# ── Exceptions ────────────────────────────────────────────────────────────────
+
+class AgentHydrationError(Exception):
+    """
+    Raised when from_spec() cannot build a valid BDIAgent from an ActorSpec.
+    Wraps the actor name and spec field that caused the failure so the caller
+    can surface a meaningful error rather than a raw Python exception.
+    """
 
 
 # ── Belief types ─────────────────────────────────────────────────────────────
@@ -21,8 +34,7 @@ class BetaBelief:
 
     decay_rate: pulls alpha/beta back toward the uniform prior (1, 1) each tick.
     Set to 1.0 (default) for no decay. 0.99 = slow forgetting.
-    Prevents belief calcification: without decay, after hundreds of ticks a
-    new observation barely moves the mean.
+    Prevents belief calcification after hundreds of ticks.
 
     maps_to_env_key: the env dict key this belief observes.
     If None, falls back to matching by belief name.
@@ -32,6 +44,13 @@ class BetaBelief:
     beta:            float      = 1.0
     decay_rate:      float      = 1.0
     maps_to_env_key: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.alpha <= 0 or self.beta <= 0:
+            raise ValueError(
+                f"BetaBelief '{self.name}': alpha and beta must be > 0, "
+                f"got alpha={self.alpha}, beta={self.beta}"
+            )
 
     @property
     def mean(self) -> float:
@@ -94,8 +113,13 @@ class GaussianBelief:
         """
         Kalman filter update step.
         obs_variance: noise in the observation.
+        If both self.variance and obs_variance are 0 (POINT belief + zero noise),
+        the belief is already certain — skip the update rather than divide by zero.
         """
-        kalman_gain   = self.variance / (self.variance + obs_variance)
+        denom = self.variance + obs_variance
+        if denom == 0.0:
+            return  # already certain; observation adds nothing
+        kalman_gain   = self.variance / denom
         self.mean     = self.mean + kalman_gain * (observed - self.mean)
         self.variance = (1 - kalman_gain) * self.variance
 
@@ -136,18 +160,19 @@ class Action:
 class BDIAgent(ABC):
     """
     Abstract BDI agent. Subclass and implement decide().
+    For standard scenarios use DefaultBDIAgent — no subclassing required.
 
-    Lifecycle per tick (called by SimRunner):
+    Tick lifecycle — call tick() or orchestrate manually:
         1. decay_beliefs()              — decay toward priors / diffuse variance
         2. observe_environment(env)     — noisy read of env keys
         3. update_beliefs(observations) — Bayesian / Kalman update
         4. decide(env, tick)            — abstract: return list[Action]
-        5. (SimRunner resolves actions and mutates env)
-        6. recharge_capabilities()      — partial capacity recovery
+        5. (SimRunner applies actions and mutates env)
+        6. recharge_capabilities()      — partial capacity recovery  ← NOT in tick()
 
-    Thread safety: all randomness must go through self.rng (a local
-    random.Random instance). Never call random.random() or random.gauss()
-    directly — those touch global state and break EnsembleRunner.
+    Thread safety: all randomness goes through self.rng (local random.Random).
+    Never call random.random() or random.gauss() directly — those touch global
+    state and break EnsembleRunner's reproducibility guarantee.
     """
 
     def __init__(
@@ -168,9 +193,7 @@ class BDIAgent(ABC):
         #                                cooldown_ticks, current, cooldown_remaining}}
         self.capabilities: dict[str, dict[str, float]] = capabilities or {}
         self.observation_noise_sigma = observation_noise_sigma
-        # Injected RNG — local instance, thread-safe for EnsembleRunner
         self.rng: random.Random = rng or random.Random()
-        # Last tick's observations (raw, noisy)
         self._observations: dict[str, float] = {}
 
     # ── Factory ───────────────────────────────────────────────────────────────
@@ -179,21 +202,29 @@ class BDIAgent(ABC):
     def from_spec(cls, spec: ActorSpec, rng: random.Random) -> BDIAgent:
         """
         Hydrate a BDIAgent (or subclass) from an ActorSpec.
-        SimRunner calls cls.from_spec(actor_spec, rng) where cls is resolved
-        from actor_spec.agent_class via importlib.
+        SimRunner resolves actor_spec.agent_class via importlib, then calls
+        resolved_cls.from_spec(actor_spec, rng).
 
-        POINT beliefs become GaussianBelief(mean=value, variance=0.0) —
-        mathematically a Dirac delta: known value, no uncertainty.
+        Propagates: decay_rate, process_noise, maps_to_env_key, observation_noise_sigma.
+        Raises AgentHydrationError on duplicate belief names.
+
+        POINT beliefs become GaussianBelief(mean=value, variance=0.0).
         """
         from core.spec import BeliefDistType
 
         beliefs: dict[str, BetaBelief | GaussianBelief] = {}
         for bs in spec.beliefs:
+            if bs.name in beliefs:
+                raise AgentHydrationError(
+                    f"Actor '{spec.name}': duplicate belief name '{bs.name}'. "
+                    "Each belief must have a unique name."
+                )
             if bs.dist_type == BeliefDistType.BETA:
                 beliefs[bs.name] = BetaBelief(
                     name=bs.name,
                     alpha=bs.alpha,
                     beta=bs.beta,
+                    decay_rate=bs.decay_rate,
                     maps_to_env_key=bs.maps_to_env_key,
                 )
             elif bs.dist_type == BeliefDistType.GAUSSIAN:
@@ -201,6 +232,7 @@ class BDIAgent(ABC):
                     name=bs.name,
                     mean=bs.mean,
                     variance=bs.variance,
+                    process_noise=bs.process_noise,
                     maps_to_env_key=bs.maps_to_env_key,
                 )
             else:  # POINT
@@ -208,6 +240,7 @@ class BDIAgent(ABC):
                     name=bs.name,
                     mean=bs.value,
                     variance=0.0,
+                    process_noise=bs.process_noise,
                     maps_to_env_key=bs.maps_to_env_key,
                 )
 
@@ -218,28 +251,57 @@ class BDIAgent(ABC):
                 "cost":               cs.cost,
                 "recovery_rate":      cs.recovery_rate,
                 "cooldown_ticks":     float(cs.cooldown_ticks),
-                "current":            cs.capacity,   # start at full capacity
+                "current":            cs.capacity,
                 "cooldown_remaining": 0.0,
             }
 
-        return cls(
+        agent = cls(
             actor_id=spec.actor_id,
             name=spec.name,
             beliefs=beliefs,
             desires=list(spec.desires),
             capabilities=capabilities,
+            observation_noise_sigma=spec.observation_noise_sigma,
             rng=rng,
         )
+        logger.debug(
+            "hydrated agent '%s' (class=%s) with %d beliefs, %d desires, %d capabilities",
+            spec.name, cls.__name__, len(beliefs), len(spec.desires), len(capabilities),
+        )
+        return agent
+
+    # ── Tick coordinator ──────────────────────────────────────────────────────
+
+    def tick(self, env: dict[str, float], tick_num: int) -> list[Action]:
+        """
+        Run the full per-tick BDI lifecycle steps 1–4 and return intended actions.
+        SimRunner calls this for each agent, then applies all actions, then calls
+        agent.recharge_capabilities() for all agents.
+
+        recharge_capabilities() is intentionally NOT called here — it must run
+        after all agents have acted, not mid-tick.
+
+        Enforced order:
+            1. decay_beliefs()
+            2. observe_environment(env)
+            3. update_beliefs(obs)
+            4. decide(env, tick_num)
+        """
+        self.decay_beliefs()
+        obs = self.observe_environment(env)
+        self.update_beliefs(obs)
+        actions = self.decide(env, tick_num)
+        logger.debug(
+            "agent '%s' tick %d → %d actions", self.name, tick_num, len(actions)
+        )
+        return actions
 
     # ── Decay ─────────────────────────────────────────────────────────────────
 
     def decay_beliefs(self) -> None:
         """
-        Decay all beliefs toward their priors. Called by SimRunner at the
-        start of each tick, before observation.
-
-        BetaBelief:    pulls alpha/beta back toward uniform (no-op if decay_rate=1.0).
-        GaussianBelief: adds process_noise to variance (no-op if process_noise=0.0).
+        Decay all beliefs toward their priors. Called by tick() at start of
+        each tick, before observation.
         """
         for belief in self.beliefs.values():
             if isinstance(belief, BetaBelief):
@@ -356,3 +418,85 @@ class BDIAgent(ABC):
                 for k, cap in self.capabilities.items()
             },
         }
+
+
+# ── DefaultBDIAgent ───────────────────────────────────────────────────────────
+
+class DefaultBDIAgent(BDIAgent):
+    """
+    Ready-to-use utility-maximizing agent. Covers most standard scenarios —
+    no subclassing required.
+
+    decide(): for each available capability (in dict order), builds an action
+    that pushes each owned env key in the direction that increases expected
+    utility. Returns a single action from the first usable capability, or []
+    if no capability is available or no desires map to owned keys.
+
+    owned_env_keys: env keys this actor can directly influence. Set automatically
+    by from_spec() from ActorSpec.initial_env_contributions.
+
+    push_delta: magnitude of each env key change per action (default 0.05 = 5%).
+    """
+
+    def __init__(
+        self,
+        *args: Any,
+        owned_env_keys: list[str] | None = None,
+        push_delta: float = 0.05,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.owned_env_keys: list[str] = owned_env_keys or []
+        self.push_delta = push_delta
+
+    def decide(self, env: dict[str, float], tick: int) -> list[Action]:
+        """
+        Build one action per tick: push owned env keys toward desired state
+        using the first available capability.
+
+        Decision logic:
+            1. Index desires by target_env_key ∩ owned_env_keys
+            2. For each available capability, build params dict:
+               {key: push_delta × sign(net_desire_direction)}
+            3. Return action if params non-empty, else continue to next capability
+            4. Return [] if no capability can produce a useful action
+        """
+        desire_index: dict[str, float] = {}
+        for desire in self.desires:
+            key = desire.target_env_key
+            if key in self.owned_env_keys:
+                desire_index[key] = (
+                    desire_index.get(key, 0.0) + desire.direction * desire.weight
+                )
+
+        if not desire_index:
+            return []
+
+        for cap_id in self.capabilities:
+            if not self.can_act(cap_id):
+                continue
+            params = {
+                key: self.push_delta * (1.0 if net > 0 else -1.0)
+                for key, net in desire_index.items()
+                if net != 0.0
+            }
+            if not params:
+                continue
+            return [Action(
+                action_id=f"{self.actor_id}__{cap_id}__t{tick}",
+                target="environment",
+                capability_id=cap_id,
+                parameters=params,
+            )]
+
+        return []
+
+    @classmethod
+    def from_spec(cls, spec: ActorSpec, rng: random.Random) -> DefaultBDIAgent:
+        """
+        Hydrate from ActorSpec. Sets owned_env_keys from
+        spec.initial_env_contributions automatically.
+        """
+        agent: DefaultBDIAgent = super().from_spec(spec, rng)  # type: ignore[assignment]
+        agent.owned_env_keys = list(spec.initial_env_contributions.keys())
+        return agent

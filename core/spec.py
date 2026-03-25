@@ -31,6 +31,9 @@ class BeliefSpec(BaseModel):
     value:       float          = 0.0
     # which env key this belief tracks (if different from belief name)
     maps_to_env_key: str | None = None
+    # runtime dynamics — propagated to BetaBelief.decay_rate / GaussianBelief.process_noise
+    decay_rate:    float        = 1.0   # BETA: pull toward uniform per tick (1.0 = no decay)
+    process_noise: float        = 0.0   # GAUSSIAN: variance added per tick (0.0 = no diffusion)
 
 
 # ── Desires / objectives ────────────────────────────────────────────────────
@@ -77,6 +80,9 @@ class ActorSpec(BaseModel):
     # initial environment keys this actor owns
     # e.g. {"iran__military_readiness": 0.7, "iran__oil_revenue": 0.4}
     initial_env_contributions: dict[str, float] = Field(default_factory=dict)
+    # per-actor observation noise — overrides UncertaintySpec.observation_noise_sigma
+    # models intelligence differences: a well-resourced actor sees more clearly
+    observation_noise_sigma: float = 0.02
     # arbitrary scenario-specific metadata
     metadata: dict[str, Any] = Field(default_factory=dict)
 
