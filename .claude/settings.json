@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pandoc --version)",
+      "Bash(python -c \"import weasyprint; print\\(''weasyprint available''\\)\")",
+      "Bash(python -c \"import markdown2; print\\(''markdown2 available''\\)\")",
+      "Bash(python -c \"import reportlab; print\\(''reportlab available''\\)\")",
+      "Bash(mkdir -p core/agents core/theories forge/researchers forge/specs forge/research api/routers api/services web/src/pages/ForgePage web/src/pages/DashboardPage web/src/pages/PortalPage web/src/stores web/src/components scenarios/hormuz data/snapshots)",
+      "Bash(touch core/__init__.py core/agents/__init__.py core/theories/__init__.py forge/__init__.py forge/researchers/__init__.py api/__init__.py api/routers/__init__.py api/services/__init__.py scenarios/__init__.py scenarios/hormuz/__init__.py)",
+      "Bash(xargs -I{} touch {}/.gitkeep)"
+    ]
+  }
+}

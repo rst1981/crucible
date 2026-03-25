@@ -1,13 +1,12 @@
-# Crucible: Agentic Simulation Platform
-### Internal Proposal — March 2026
-
+---
+pdf_options:
+  format: A4
+  margin: 20mm 15mm
+stylesheet: proposal.css
 ---
 
-## Executive Summary
-
-We propose building **Crucible**, a proprietary agentic simulation platform that enables our firm to rapidly design, run, and deliver scenario-based models for clients across market sectors. Crucible transforms the way we approach complex advisory engagements — replacing static analysis with dynamic, theory-driven simulations that evolve in real time as the world changes.
-
-Crucible is built on a working proof of concept: a geopolitical crisis simulation (Operation Epic Fury, Strait of Hormuz) developed internally, which demonstrated the viability of this approach at scale. We are now ready to generalize that architecture into a platform.
+# Crucible: Agentic Simulation Platform
+### Internal Proposal — March 2026
 
 ---
 
@@ -73,16 +72,79 @@ Once running, the simulation stays current. A background data feed agent monitor
 
 ## Theory Library
 
-Crucible ships with a curated library of validated models across domains:
+Crucible ships with a curated library of validated formal models across five domains. Each theory is implemented as a composable module: it exposes a standard interface (parameters, state variables, update rules) that the Theory Mapper can wire into any simulation without bespoke code.
 
-| Domain | Models |
-|--------|--------|
-| Geopolitics & conflict | Richardson arms race, Wittman-Zartman negotiation, Fearon bargaining |
-| Market dynamics | Porter's Five Forces, supply/demand shocks, financial contagion |
-| Organizational behavior | Principal-agent theory, institutional theory, diffusion of innovation |
-| Macro & policy | Keynesian multipliers, regulatory shock propagation |
+---
 
-The library grows with each engagement. New theories are formalized and added as reusable modules.
+### Domain 1: Geopolitics & Conflict
+
+| Model | Description | Key Parameters |
+|-------|-------------|----------------|
+| **Richardson Arms Race** | Differential equation model of mutual military buildup driven by threat perception and grievance. Classic dyadic escalation baseline. | Fatigue coefficient, threat sensitivity, grievance load |
+| **Wittman-Zartman Negotiation** | Models ripeness for conflict termination — identifies when both parties perceive a mutually hurting stalemate and a negotiated exit becomes rational. | Stalemate threshold, cost tolerance, perceived BATNA |
+| **Fearon Bargaining (DIA)** | Explains why rational actors fight. Models private information asymmetries, commitment problems, and issue indivisibility as drivers of conflict onset and duration. | Information gap, credibility discount, issue divisibility |
+| **Prospect Theory (Kahneman-Tversky applied to IR)** | Captures loss-aversion in state decision-making — actors in the domain of losses take greater risks than classical expected utility predicts. | Reference point, loss-aversion coefficient |
+| **Selectorate Theory (Bueno de Mesquita)** | Models leader survival logic — how the size of the winning coalition shapes foreign policy decisions, war initiation, and concession behavior. | Winning coalition size, selectorate size, loyalty norm |
+
+---
+
+### Domain 2: Market & Competitive Dynamics
+
+| Model | Description | Key Parameters |
+|-------|-------------|----------------|
+| **Porter's Five Forces** | Structural analysis of industry attractiveness — maps rivalry, substitution, buyer/supplier power, and entry threat as continuous pressure variables. | Entry barrier height, switching costs, concentration ratio |
+| **Cournot / Bertrand Competition** | Oligopoly pricing and quantity dynamics. Cournot models quantity competition; Bertrand models price competition to marginal cost. | Number of firms, marginal cost, demand elasticity |
+| **Supply/Demand Shock Propagation** | Models how upstream disruptions (supply shocks) or demand collapses ripple through a market system with inventory buffers and price stickiness. | Shock magnitude, buffer depth, price rigidity |
+| **Financial Contagion (DebtRank)** | Network-based model of systemic risk propagation across financially linked institutions or markets. | Exposure matrix, leverage ratios, threshold sensitivity |
+| **Bass Diffusion Model** | Forecasts adoption curves for new products or technologies — separates innovator-driven early adoption from imitator-driven mass market growth. | Innovation coefficient (p), imitation coefficient (q) |
+| **Hotelling Spatial Competition** | Models firm positioning along a product or policy dimension when consumers prefer proximity — explains clustering and differentiation decisions. | Transport cost, consumer distribution, entry cost |
+
+---
+
+### Domain 3: Organizational & Corporate Behavior
+
+| Model | Description | Key Parameters |
+|-------|-------------|----------------|
+| **Principal-Agent Theory** | Models misaligned incentives between principals (owners, regulators, boards) and agents (managers, employees). Drives hidden action and adverse selection dynamics. | Monitoring cost, agent risk aversion, incentive alignment |
+| **Institutional Theory (DiMaggio & Powell)** | Explains organizational isomorphism — why firms in a sector converge on similar structures through coercive, mimetic, and normative pressures. | Regulatory pressure, peer visibility, legitimacy pressure |
+| **Diffusion of Innovation (Rogers)** | Models how a practice, technology, or policy spreads through a population segmented into innovators, early adopters, majority, and laggards. | Adoption thresholds per segment, network density |
+| **Organizational Resilience (Weick HRO)** | High-Reliability Organization model — captures how organizations maintain function under stress through redundancy, deference to expertise, and sense-making loops. | Redundancy factor, expertise centralization, failure rate |
+| **Stakeholder Salience (Mitchell et al.)** | Prioritizes which actors receive organizational attention based on power, legitimacy, and urgency — useful for modeling multi-stakeholder scenarios. | Salience scores, urgency decay, power distribution |
+
+---
+
+### Domain 4: Macroeconomics & Policy
+
+| Model | Description | Key Parameters |
+|-------|-------------|----------------|
+| **Keynesian Multiplier** | Models the amplified effect of a fiscal stimulus or shock on aggregate demand through successive rounds of spending. | Marginal propensity to consume, leakage rates |
+| **Regulatory Shock Propagation** | Captures how a policy change (new regulation, tariff, license requirement) transmits through a sector via compliance cost, market exit, and behavioral adjustment. | Compliance cost distribution, exit threshold, adjustment speed |
+| **IS-LM / AS-AD Framework** | Standard macroeconomic equilibrium model linking output, interest rates, and price levels — useful for monetary and fiscal policy scenario analysis. | Investment sensitivity, money demand elasticity, price flexibility |
+| **Debt Sustainability (DSA)** | Models sovereign or corporate debt trajectory under different growth, interest rate, and primary balance scenarios — standard IMF/World Bank methodology. | Debt/GDP ratio, interest-growth differential, primary balance |
+| **Input-Output (Leontief)** | Sector-level model of economic interdependence — traces how a disruption in one sector propagates through supply chains across the whole economy. | Technical coefficients matrix, final demand vector |
+
+---
+
+### Domain 5: Social & Behavioral Dynamics
+
+| Model | Description | Key Parameters |
+|-------|-------------|----------------|
+| **Schelling Segregation** | Demonstrates how mild individual preferences produce strong macro-level segregation — applicable to market segmentation, political polarization, and urban dynamics. | Tolerance threshold, population mix |
+| **Opinion Dynamics (Deffuant-Weisbuch)** | Models belief convergence and polarization in a population — agents update opinions only when the gap with interacting agents falls below a confidence threshold. | Confidence threshold, convergence rate, network topology |
+| **SIR / SEIR Contagion** | Epidemiological spread model adapted for idea diffusion, crisis contagion, financial panic, or social movement propagation. | Transmission rate (β), recovery rate (γ), network structure |
+| **Tipping Point / Threshold Models (Granovetter)** | Models cascade phenomena — strikes, protests, bank runs, market crashes — as sequences of agents crossing individual action thresholds. | Threshold distribution, network connectivity |
+
+---
+
+### Composability
+
+Models are not used in isolation. The Theory Mapper composes them into layered simulations:
+
+- A **geopolitical scenario** might layer Richardson (escalation) + Fearon (onset logic) + Prospect Theory (decision bias) + Input-Output (economic damage propagation)
+- A **market entry scenario** might layer Porter's Five Forces (structural baseline) + Bass Diffusion (adoption) + Hotelling (positioning) + Principal-Agent (partner dynamics)
+- A **regulatory scenario** might layer Regulatory Shock Propagation + Keynesian Multiplier + Institutional Theory (industry response)
+
+The library grows with each engagement. New theories are formalized and added as reusable modules after each project.
 
 ---
 
@@ -100,24 +162,222 @@ Crucible is sector-agnostic. Initial target domains:
 
 ## Platform Architecture
 
-Crucible is built as a modern, cloud-native SaaS platform with two distinct interfaces:
+Crucible is a cloud-native platform with five distinct subsystems. Each is independently deployable and communicates through well-defined interfaces.
 
-**The Forge** (internal)
-- Consultant-facing simulation design environment
-- Scoping agent chat interface
-- Theory selection and parameter review
-- Rapid iteration and scenario comparison
+---
 
-**The Portal** (client-facing)
-- Clean, branded dashboard
-- Named scenario snapshots and exports
-- No simulation machinery visible — just insights
+### System Overview
 
-**Infrastructure**
-- Python backend (FastAPI) with agent simulation engine
-- React frontend
-- Cloud deployment (Railway + Vercel pattern, proven in proof of concept)
-- Claude API for research and scoping intelligence
+```
+┌─────────────────────────────────────────────────────────────┐
+│                          FORGE                              │
+│           (Internal consultant-facing interface)            │
+│                                                             │
+│  ┌─────────────┐    ┌──────────────┐    ┌───────────────┐  │
+│  │  Scoping    │───▶│   Research   │───▶│    Theory     │  │
+│  │   Agent     │    │   Pipeline   │    │    Mapper     │  │
+│  └─────────────┘    └──────────────┘    └───────┬───────┘  │
+│         ▲                                        │          │
+│   (chat input)                                   ▼          │
+│                                         ┌────────────────┐  │
+│                                         │   Sim Factory  │  │
+│                                         └───────┬────────┘  │
+└─────────────────────────────────────────────────┼───────────┘
+                                                  │
+                              ┌───────────────────▼───────────────────┐
+                              │            SIMULATION ENGINE           │
+                              │  BDI Agents + Theory Modules + Clock  │
+                              └───────────────────┬───────────────────┘
+                                                  │
+               ┌──────────────────────────────────┼─────────────────────────────┐
+               │                                  │                             │
+    ┌──────────▼──────────┐           ┌───────────▼──────────┐     ┌───────────▼──────────┐
+    │    FastAPI Backend  │           │   Data Feed Agent    │     │   Snapshot Store     │
+    │    (REST + WS)      │           │  (live calibration)  │     │  (named + scheduled) │
+    └──────────┬──────────┘           └──────────────────────┘     └──────────────────────┘
+               │
+    ┌──────────┴──────────────────────────────────┐
+    │                  FRONTEND                    │
+    │   ForgePage  │  DashboardPage  │  PortalPage │
+    └─────────────────────────────────────────────┘
+```
+
+---
+
+### Subsystem 1: Scoping Agent
+
+The entry point. A conversational LLM agent (Claude API) that transforms a free-text scenario description into a structured **SimSpec** object.
+
+**Behavior:**
+- On first input, fires all research adapters in parallel (background, non-blocking)
+- Asks informed questions grounded in what research returns — not a static intake form
+- Iteratively refines scope: actors, timeframe, key uncertainties, outcome metrics
+- Builds the SimSpec object conversationally, invisible to the user
+- Hands off to Theory Mapper when SimSpec is complete
+
+**Key design principles:**
+- Research precedes questions — the agent never asks something it could have looked up
+- Each conversation turn is context-aware: later questions incorporate earlier answers and new research results
+- The consultant sees a natural dialogue; the system is assembling a structured object
+
+---
+
+### Subsystem 2: Research Pipeline
+
+A set of lightweight adapters that fetch, parse, and summarize external data sources on demand. Used by the Scoping Agent at intake and by the Data Feed Agent at runtime.
+
+| Adapter | Source | Use |
+|---------|--------|-----|
+| `arxiv_adapter` | arXiv API | Academic papers on relevant theory and domain |
+| `ssrn_adapter` | SSRN search | Economics, finance, social science preprints |
+| `fred_adapter` | FRED API | Macro economic time series (GDP, inflation, rates, trade) |
+| `worldbank_adapter` | World Bank API | Development indicators, country-level data |
+| `news_adapter` | RSS / OSINT feeds | Live event tracking, calibration triggers |
+
+Each adapter returns a normalized `ResearchResult` object (source, title, summary, relevance score, raw data). The Scoping Agent and Theory Mapper consume these uniformly.
+
+---
+
+### Subsystem 3: SimSpec
+
+The structured output of the Scoping Agent. SimSpec is the contract between intake and simulation — it fully describes a scenario in machine-readable form.
+
+```
+SimSpec
+├── scenario_id          UUID
+├── title                str
+├── domain               enum: geopolitics | market | org | macro | social | composite
+├── actors[]
+│   ├── id               str
+│   ├── type             enum: state | firm | regulator | population | coalition
+│   ├── beliefs{}        dict: variable → initial probability distribution
+│   ├── desires[]        list: goal objects with priority weights
+│   └── capabilities{}   dict: action → capacity value
+├── environment{}        dict: shared world-state variables
+├── theories[]           list: theory module IDs selected by Theory Mapper
+├── parameters{}         dict: theory param → value (from research + defaults)
+├── timeframe
+│   ├── start            date
+│   ├── end              date
+│   └── tick_unit        enum: day | week | month | quarter
+├── uncertainties[]      list: variables with probability distributions
+├── outcome_metrics[]    list: KPI definitions for the dashboard
+└── research_sources[]   list: ResearchResult references used in construction
+```
+
+SimSpec is serialized to JSON and stored — it is the reproducible definition of a simulation. Any simulation can be reconstructed from its SimSpec.
+
+---
+
+### Subsystem 4: Simulation Engine
+
+The core runtime. Domain-agnostic. Executes the scenario defined in a SimSpec.
+
+**Agent Architecture (BDI):**
+
+Each actor in the SimSpec becomes a BDI (Belief-Desire-Intention) agent at runtime:
+- **Beliefs** — probability distributions over world-state variables, updated each tick via Bayesian inference
+- **Desires** — weighted goal set (e.g., maximize territorial control, minimize economic damage, maintain coalition support)
+- **Intentions** — current action plan, selected by a decision function that maximizes expected utility given beliefs and desires
+- **Actions** — discrete moves (escalate, negotiate, sanction, invest, exit, etc.) with effects on the shared environment
+
+**Tick Loop:**
+```
+for each tick:
+    1. Environment updated (external shocks, data feed inputs)
+    2. Each agent observes environment → updates beliefs (Bayesian)
+    3. Each agent evaluates intentions against updated beliefs
+    4. Each agent selects and executes action
+    5. Actions resolve → environment updated
+    6. Theory modules apply update rules (e.g., Richardson equations, multiplier effects)
+    7. Outcome metrics recorded
+    8. Snapshot trigger evaluated (scheduled or threshold-based)
+```
+
+**Theory Module Interface:**
+
+Every theory module exposes:
+- `parameters: dict` — configurable inputs
+- `state_variables: dict` — variables it reads from and writes to environment
+- `update(env, agents, tick) → env` — pure function applied each tick
+
+This makes modules composable without modification.
+
+---
+
+### Subsystem 5: Data Feed Agent
+
+A background agent that runs while a simulation is live. Monitors real-world signals and recalibrates simulation parameters automatically.
+
+**Behavior:**
+- Polls news and data adapters on a configurable schedule
+- Passes new information to Claude API for relevance assessment and parameter delta estimation
+- Applies approved parameter adjustments to the running simulation
+- Logs each calibration event with source, reasoning, and delta applied
+- Flags high-significance events to the consultant dashboard as alerts
+
+This is the "stays current" capability — a simulation launched on Monday reflects Tuesday's events by Wednesday.
+
+---
+
+### Subsystem 6: API & Data Layer
+
+**FastAPI backend** exposes:
+- `POST /simulations` — create simulation from SimSpec
+- `GET /simulations/{id}/state` — current simulation state
+- `GET /simulations/{id}/metrics` — outcome KPI time series
+- `POST /simulations/{id}/snapshots` — name and save a snapshot
+- `GET /simulations/{id}/snapshots` — list snapshots
+- `WS /simulations/{id}/stream` — real-time tick stream for dashboard
+- `POST /forge/intake` — submit scenario text to Scoping Agent
+- `GET /forge/intake/{session_id}` — poll scoping session state
+
+**Data persistence:**
+- Simulation state: serialized per-tick to append-only log
+- Snapshots: named JSON blobs (SimSpec + state at point-in-time)
+- Research cache: TTL-keyed per adapter + query hash
+
+---
+
+### Subsystem 7: Frontend
+
+Three distinct views, unified codebase:
+
+**ForgePage** — Scoping Agent UI
+- Chat interface with streaming responses
+- Background research status indicators (live as adapters return)
+- SimSpec preview panel (builds in real-time as conversation progresses)
+- "Launch simulation" CTA when SimSpec is complete
+
+**DashboardPage** — Internal war-room view
+- Live KPI panels with tick-by-tick updates (WebSocket)
+- Agent belief and intention state viewer
+- Timeline with named snapshot markers
+- Replay controls — step forward/backward, branch from any snapshot
+- Calibration event log (Data Feed Agent activity)
+- Theory module parameter viewer
+
+**PortalPage** — Client-facing SaaS view
+- Clean, branded layout — no simulation machinery visible
+- Key findings panels with narrative explanations
+- Snapshot comparison (before/after scenarios)
+- Export: PDF report, data CSV, shareable link
+
+---
+
+### Infrastructure
+
+| Component | Technology | Deployment |
+|-----------|-----------|------------|
+| Backend | Python 3.12 / FastAPI | Railway (Dockerfile) |
+| Simulation engine | Pure Python (asyncio) | Co-located with backend |
+| Frontend | React 19 / Vite / TypeScript | Vercel |
+| Database | PostgreSQL (Railway managed) | Railway |
+| Cache | Redis (research results, session state) | Railway |
+| AI | Claude API (claude-sonnet-4-6) | Anthropic |
+| Scheduling | APScheduler | In-process |
+
+This pattern is proven — it is exactly the architecture of the Hormuz proof of concept, operating in production.
 
 ---
 

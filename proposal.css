@@ -1,0 +1,11 @@
+body { font-size: 11px; font-family: 'Segoe UI', Arial, sans-serif; }
+h1 { font-size: 22px; }
+h2 { font-size: 16px; margin-top: 28px; }
+h3 { font-size: 13px; margin-top: 18px; }
+table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; word-wrap: break-word; }
+th, td { border: 1px solid #ccc; padding: 4px 6px; vertical-align: top; }
+th { background: #f2f2f2; font-weight: bold; }
+td:first-child { width: 22%; }
+td:nth-child(2) { width: 50%; }
+td:nth-child(3) { width: 28%; }
+pre, code { font-size: 9px; overflow-wrap: break-word; white-space: pre-wrap; }
