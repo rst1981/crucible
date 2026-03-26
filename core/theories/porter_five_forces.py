@@ -54,9 +54,11 @@ class PorterFiveForces(TheoryBase):
     Industry competitive structure dynamics.
 
     Domains: market, corporate_strategy, industry_analysis
-    Priority: 0 (runs before supply/demand and contagion theories;
-              reads keynesian__gdp_normalized from Keynesian at same priority —
-              order within priority-0 bucket should put Keynesian first)
+    Priority: 0 (runs before supply/demand and contagion theories).
+
+    Cross-theory reads: reads keynesian__gdp_normalized for rivalry dampening.
+    By design, SimRunner applies all theory deltas from the same tick together,
+    so Porter reads Keynesian's *previous tick* value — 1-tick lag is intentional.
     """
 
     DOMAINS = ["market", "corporate_strategy", "industry_analysis"]

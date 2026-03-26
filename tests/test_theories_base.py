@@ -137,10 +137,6 @@ class TestTheoryBase:
         assert "theory_id" in snap
         assert "parameters" in snap
 
-    def test_tick_history_starts_empty(self):
-        Noop = _make_concrete_theory()
-        assert Noop()._tick_history == []
-
     def test_update_pure_does_not_mutate_env(self):
         class MutationTest(TheoryBase):
             def update(self, env, agents, tick):

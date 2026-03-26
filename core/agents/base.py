@@ -436,6 +436,11 @@ class DefaultBDIAgent(BDIAgent):
     by from_spec() from ActorSpec.initial_env_contributions.
 
     push_delta: magnitude of each env key change per action (default 0.05 = 5%).
+
+    Capability selection: uses the FIRST available capability in dict/insertion order
+    (i.e. CapabilitySpec list order from SimSpec). Always picks the same capability
+    until it runs out — by design. For priority-based selection, subclass and
+    override decide().
     """
 
     def __init__(

@@ -105,7 +105,6 @@ class TheoryBase(ABC):
                         in SimSpec). Keys must match the inner Parameters model.
         """
         self.params = self.Parameters(**(parameters or {}))
-        self._tick_history: list[dict[str, float]] = []
         logger.debug(
             "Theory '%s' initialized with params: %s",
             self.theory_id,

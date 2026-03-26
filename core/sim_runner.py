@@ -27,8 +27,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from core.agents.base import Action, BDIAgent, BetaBelief, GaussianBelief
-from core.spec import ActorSpec, BeliefDistType, SimSpec
+from core.agents.base import Action, BDIAgent
+from core.spec import ActorSpec, SimSpec
 from core.theories import get_theory
 from core.theories.base import TheoryBase
 
@@ -117,8 +117,10 @@ class SimRunner:
         self._lock = threading.Lock()
         self._snapshot_triggers: list[ScheduledSnapshotTrigger | ThresholdSnapshotTrigger] = []
         self._running = False
-        if rng_seed is not None:
-            random.seed(rng_seed)
+        # Instance-level RNG — never use the global random module in this class.
+        # This ensures two SimRunner instances (e.g. in EnsembleRunner) don't share
+        # random state and that results are reproducible given the same seed.
+        self.rng = random.Random(rng_seed)
 
     # ── Setup ──────────────────────────────────────────────────────────────
 
@@ -135,7 +137,8 @@ class SimRunner:
             for key, value in actor_spec.initial_env_contributions.items():
                 self.env[key] = value
 
-        # 3. Build agents
+        # 3. Build agents via from_spec() — handles beliefs, desires, capabilities,
+        #    decay_rate, process_noise, maps_to_env_key, and rng threading correctly.
         self.agents = [self._build_agent(a) for a in self.spec.actors]
 
         # 4. Instantiate theories in priority order
@@ -171,44 +174,14 @@ class SimRunner:
         )
 
     def _build_agent(self, actor_spec: ActorSpec) -> BDIAgent:
+        """Delegate to AgentClass.from_spec() — single source of truth for hydration."""
         module_path, class_name = actor_spec.agent_class.rsplit(".", 1)
         module = importlib.import_module(module_path)
         AgentClass = getattr(module, class_name)
-
-        beliefs = {}
-        for b_spec in actor_spec.beliefs:
-            if b_spec.dist_type == BeliefDistType.BETA:
-                beliefs[b_spec.belief_id] = BetaBelief(
-                    name=b_spec.name, alpha=b_spec.alpha, beta=b_spec.beta,
-                )
-            else:
-                # GAUSSIAN and POINT both become GaussianBelief
-                # (POINT uses zero variance)
-                variance = b_spec.variance if b_spec.dist_type == BeliefDistType.GAUSSIAN else 0.0
-                mean = b_spec.mean if b_spec.dist_type == BeliefDistType.GAUSSIAN else b_spec.value
-                beliefs[b_spec.belief_id] = GaussianBelief(
-                    name=b_spec.name, mean=mean, variance=variance,
-                )
-
-        capabilities = {}
-        for cap_spec in actor_spec.capabilities:
-            capabilities[cap_spec.capability_id] = {
-                "capacity": cap_spec.capacity,
-                "cost": cap_spec.cost,
-                "recovery_rate": cap_spec.recovery_rate,
-                "cooldown_ticks": cap_spec.cooldown_ticks,
-                "current": cap_spec.capacity,   # start full
-                "cooldown_remaining": 0,
-            }
-
-        return AgentClass(
-            actor_id=actor_spec.actor_id,
-            name=actor_spec.name,
-            beliefs=beliefs,
-            desires=[d.model_dump() for d in actor_spec.desires],
-            capabilities=capabilities,
-            observation_noise_sigma=actor_spec.observation_noise_sigma,
-        )
+        # Each agent gets its own Random seeded from the runner's RNG stream,
+        # so all randomness is deterministic given SimRunner(rng_seed=N).
+        agent_rng = random.Random(self.rng.random())
+        return AgentClass.from_spec(actor_spec, rng=agent_rng)
 
     def _build_theory(self, ref) -> TheoryBase:
         TheoryClass = get_theory(ref.theory_id)
@@ -249,10 +222,10 @@ class SimRunner:
                             if key in self.env:
                                 self.env[key] = max(0.0, min(1.0, self.env[key] + delta))
 
-                    # 2. Apply random shocks
-                    if self.env and random.random() < shock_prob:
-                        shock_key = random.choice(list(self.env.keys()))
-                        shock_delta = random.uniform(-shock_mag, shock_mag)
+                    # 2. Apply random shocks (use self.rng — never global random)
+                    if self.env and self.rng.random() < shock_prob:
+                        shock_key = self.rng.choice(list(self.env.keys()))
+                        shock_delta = self.rng.uniform(-shock_mag, shock_mag)
                         self.env[shock_key] = max(0.0, min(1.0, self.env[shock_key] + shock_delta))
 
                     # 3. Agents observe (noisy read of env)

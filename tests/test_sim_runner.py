@@ -14,13 +14,16 @@ from core.sim_runner import (
 )
 from core.spec import (
     ActorSpec,
+    BeliefDistType,
+    BeliefSpec,
+    CapabilitySpec,
+    DesireSpec,
     OutcomeMetricSpec,
     SimSpec,
     TheoryRef,
     TimeframeSpec,
     UncertaintySpec,
 )
-from core.spec import BeliefDistType
 from core.theories import register_theory
 from core.theories.base import TheoryBase, TheoryStateVariables
 
@@ -152,24 +155,21 @@ class TestSimRunnerSetup:
 
     def test_theory_seeds_env_keys(self):
         """A theory's setup() can add keys to env."""
-        _make_noop_theory("_test_seeder_theory")
-
-        @register_theory("_seeder_actual") if "_seeder_actual" not in __import__(
-            "core.theories", fromlist=["_THEORY_REGISTRY"]
-        )._THEORY_REGISTRY else lambda c: c
-        class _Seeder(TheoryBase):
-            @property
-            def state_variables(self):
-                return TheoryStateVariables(initializes=["seeded_key"])
-
-            def setup(self, env):
-                return {"seeded_key": 0.42}
-
-            def update(self, env, agents, tick):
-                return {}
-
         from core.theories import _THEORY_REGISTRY
-        _THEORY_REGISTRY["_seeder_actual"] = _Seeder
+
+        if "_seeder_actual" not in _THEORY_REGISTRY:
+            @register_theory("_seeder_actual")
+            class _Seeder(TheoryBase):
+                @property
+                def state_variables(self):
+                    return TheoryStateVariables(initializes=["seeded_key"])
+
+                def setup(self, env):
+                    return {"seeded_key": 0.42}
+
+                def update(self, env, agents, tick):
+                    return {}
+
         spec = _minimal_spec(
             theories=[TheoryRef(theory_id="_seeder_actual")],
         )
@@ -365,6 +365,150 @@ class TestSimRunnerRun:
         r1.setup()
         r1.run()
         r2 = SimRunner(spec2, rng_seed=7)
+        r2.setup()
+        r2.run()
+        v1 = [r.value for r in r1.metric_history]
+        v2 = [r.value for r in r2.metric_history]
+        assert v1 == v2
+
+
+# ── Integration: full actor spec via from_spec() ───────────────────────────
+
+
+class TestSimRunnerFromSpecIntegration:
+    """
+    Verifies that SimRunner._build_agent() correctly delegates to from_spec(),
+    propagating decay_rate, process_noise, maps_to_env_key, desires, and
+    capabilities end-to-end through a live sim run.
+    """
+
+    def _full_actor_spec(self) -> ActorSpec:
+        return ActorSpec(
+            name="FullActor",
+            actor_id="full_actor",
+            agent_class="core.agents.base.DefaultBDIAgent",
+            initial_env_contributions={"full_actor__val": 0.4},
+            beliefs=[
+                BeliefSpec(
+                    name="val_belief",
+                    dist_type=BeliefDistType.GAUSSIAN,
+                    mean=0.4,
+                    variance=0.1,
+                    process_noise=0.01,
+                    maps_to_env_key="full_actor__val",
+                ),
+                BeliefSpec(
+                    name="prob_belief",
+                    dist_type=BeliefDistType.BETA,
+                    alpha=2.0,
+                    beta=2.0,
+                    decay_rate=0.99,
+                ),
+            ],
+            desires=[
+                DesireSpec(
+                    name="maximize_val",
+                    target_env_key="full_actor__val",
+                    direction=1.0,
+                    weight=1.0,
+                ),
+            ],
+            capabilities=[
+                CapabilitySpec(
+                    name="push",
+                    capability_id="push_cap",
+                    capacity=1.0,
+                    cost=0.1,
+                    recovery_rate=0.05,
+                    cooldown_ticks=0,
+                ),
+            ],
+        )
+
+    def test_beliefs_hydrated_with_process_noise(self):
+        """Gaussian belief with process_noise should diffuse variance over ticks."""
+        spec = _minimal_spec(
+            ticks=5,
+            initial_env={"full_actor__val": 0.4},
+            actors=[self._full_actor_spec()],
+            uncertainty=UncertaintySpec(shock_probability=0.0),
+        )
+        runner = SimRunner(spec, rng_seed=0)
+        runner.setup()
+        agent = runner.agents[0]
+        initial_variance = agent.beliefs["val_belief"].variance
+        runner.run()
+        # variance should have changed (diffusion occurred)
+        final_variance = agent.beliefs["val_belief"].variance
+        assert final_variance != initial_variance
+
+    def test_beta_belief_hydrated_with_decay_rate(self):
+        """BetaBelief with decay_rate < 1.0 should be correctly propagated."""
+        spec = _minimal_spec(
+            ticks=1,
+            initial_env={"full_actor__val": 0.4},
+            actors=[self._full_actor_spec()],
+            uncertainty=UncertaintySpec(shock_probability=0.0),
+        )
+        runner = SimRunner(spec, rng_seed=0)
+        runner.setup()
+        agent = runner.agents[0]
+        assert agent.beliefs["prob_belief"].decay_rate == pytest.approx(0.99)
+
+    def test_maps_to_env_key_drives_belief_update(self):
+        """Gaussian belief with maps_to_env_key should update from that env key."""
+        spec = _minimal_spec(
+            ticks=5,
+            initial_env={"full_actor__val": 0.8},  # high value — clearly above prior mean of 0.4
+            actors=[self._full_actor_spec()],
+            uncertainty=UncertaintySpec(shock_probability=0.0),
+        )
+        runner = SimRunner(spec, rng_seed=0)
+        runner.setup()
+        agent = runner.agents[0]
+        initial_mean = agent.beliefs["val_belief"].mean  # 0.4
+        runner.run()
+        # After 5 ticks observing ~0.8, mean should be clearly higher than 0.4
+        assert agent.beliefs["val_belief"].mean > initial_mean + 0.05
+
+    def test_desires_drive_actions(self):
+        """Actor with desire to maximize val should push it up over ticks."""
+        spec = _minimal_spec(
+            ticks=10,
+            initial_env={"full_actor__val": 0.4},
+            actors=[self._full_actor_spec()],
+            uncertainty=UncertaintySpec(shock_probability=0.0),
+            metrics=[OutcomeMetricSpec(name="val", env_key="full_actor__val")],
+        )
+        runner = SimRunner(spec, rng_seed=0)
+        runner.setup()
+        runner.run()
+        first_val = runner.metric_history[0].value
+        last_val = runner.metric_history[-1].value
+        # Agent wants to maximize val → should increase over time
+        assert last_val > first_val
+
+    def test_two_runners_same_seed_same_agent_rng(self):
+        """Two runners with same seed should produce identical agent belief histories."""
+        actor = self._full_actor_spec()
+        spec_a = _minimal_spec(
+            ticks=10,
+            initial_env={"full_actor__val": 0.4},
+            actors=[actor],
+            uncertainty=UncertaintySpec(shock_probability=0.0),
+            metrics=[OutcomeMetricSpec(name="val", env_key="full_actor__val")],
+        )
+        spec_b = _minimal_spec(
+            ticks=10,
+            initial_env={"full_actor__val": 0.4},
+            actors=[actor],
+            uncertainty=UncertaintySpec(shock_probability=0.0),
+            metrics=[OutcomeMetricSpec(name="val", env_key="full_actor__val")],
+        )
+        r1 = SimRunner(spec_a, rng_seed=42)
+        r1.setup()
+        r1.run()
+        r2 = SimRunner(spec_b, rng_seed=42)
         r2.setup()
         r2.run()
         v1 = [r.value for r in r1.metric_history]
