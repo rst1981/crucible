@@ -171,7 +171,7 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 
 **Phase:** Week 2 in progress — theory library expanded.
 
-**Test coverage: 360 tests, all passing.**
+**Test coverage: 448 tests, all passing.**
 
 **Implemented (Week 1):**
 - `core/spec.py` — SimSpec, BeliefSpec, ActorSpec, TheoryRef, EnvKeySpec, SpecDiff, diff_simspecs(), branch_simspec()
@@ -189,6 +189,11 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 - `core/theories/bass_diffusion.py` — Bass (1969) S-curve adoption. p/q params, GDP→imitation amplification, trade disruption→innovation suppression. `market_id` param for multi-instance. Enables: tech adoption, market entry, disruption, EV/energy transition scenarios.
 - `core/theories/sir_contagion.py` — SIR compartmental model. S+I+R=1 renormalized per tick. β amplified by trade disruption. `contagion_id` param for multi-instance (banking, supply chain, cyber, etc.). Enables: financial contagion, supply chain failure, crisis spread scenarios.
 - `core/theories/opinion_dynamics.py` — Deffuant (2000) bounded confidence mean-field model. Tracks mean + polarization (normalized std dev). ε controls convergence/fragmentation threshold. Urgency injects polarization; media bias drifts mean. `domain_id` param for multi-instance. Enables: political, reputational, ESG, social license scenarios.
+
+**Implemented (Week 2, session 2 — medium priority theories):**
+- `core/theories/principal_agent.py` — Holmström (1979) incentive alignment. β (incentive slope), intrinsic_motivation, risk_aversion, monitoring_intensity (external). Effort adjusts with inertia. Outputs effort_level, compliance, shirking_risk, incentive_alignment. `agent_id` param. Enables: corporate governance, outsourcing, regulation, public sector scenarios.
+- `core/theories/cournot_oligopoly.py` — Cournot (1838) quantity-setting duopoly. Best-response tatônnement dynamics. GDP modulates demand. Outputs quantities, price, margins, HHI concentration. `nash_equilibrium()` method. `market_id` param. Enables: competitive strategy, pricing, antitrust scenarios.
+- `core/theories/regulatory_shock.py` — Regulatory event propagation. Shock injected externally; theory models compliance cost, logistic adaptation, market exit risk, incumbent competitive advantage. GDP slows adaptation. Porter barriers amplify advantage. `regulation_id` param. Enables: carbon pricing, GDPR, financial regulation, antitrust scenarios.
 
 **Architecture documents (all current):**
 - `ARCHITECTURE.md` — engine: SimSpec, BDIAgent, TheoryBase, SimRunner design
@@ -211,6 +216,9 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 | `bass_diffusion` | market/technology | S-curve adoption (innovation + imitation) |
 | `sir_contagion` | contagion/risk | S/I/R spread and recovery |
 | `opinion_dynamics` | social/political | Bounded confidence polarization |
+| `principal_agent` | governance/org | Incentive alignment, effort, shirking |
+| `cournot_oligopoly` | market/strategy | Quantity competition, Nash equilibrium |
+| `regulatory_shock` | regulation/policy | Compliance cost, adaptation, exit risk |
 
 **Cross-theory data flow (new additions):**
 - Bass reads `keynesian__gdp_normalized` + `global__trade_volume`
@@ -356,18 +364,23 @@ crucible/
 
 **Date:** March 26, 2026. **Week 2 in progress.**
 
-### Delivered (360 tests, all green):
+### Delivered (448 tests, all green):
 
 **Week 1 — core engine:**
 - `core/spec.py`, `core/agents/base.py`, `core/sim_runner.py`
 - `core/theories/`: richardson_arms_race, fearon_bargaining, wittman_zartman, keynesian_multiplier, porter_five_forces
 
-**Week 2, session 1 — theory library expansion:**
-- `core/theories/bass_diffusion.py` — S-curve adoption (Bass 1969). market_id param.
+**Week 2, session 1 — theory library expansion (high priority):**
+- `core/theories/bass_diffusion.py` — S-curve adoption. market_id param.
 - `core/theories/sir_contagion.py` — SIR compartmental contagion. contagion_id param.
 - `core/theories/opinion_dynamics.py` — Deffuant bounded confidence. domain_id param.
-- All three wired into existing cross-theory env keys (GDP, trade, urgency).
-- 92 new tests.
+
+**Week 2, session 2 — theory library expansion (medium priority):**
+- `core/theories/principal_agent.py` — Holmström incentive alignment. agent_id param.
+- `core/theories/cournot_oligopoly.py` — Cournot duopoly + Nash equilibrium. market_id param.
+- `core/theories/regulatory_shock.py` — Regulatory event propagation + adaptation. regulation_id param.
+
+**11 theories total. All instance-namespaced via ID params (multi-instance per sim).**
 
 ### Next: Week 2 remaining
 - Research adapters (arXiv, SSRN, FRED, World Bank, news/RSS)
