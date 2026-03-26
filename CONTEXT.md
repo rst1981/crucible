@@ -300,8 +300,8 @@ NEVER run `npx vercel --prod` or any Vercel CLI deploy command. It creates dupli
 
 ### Project Context
 
-**Crucible — Agentic Simulation Platform**
-*Generalized simulation platform for consulting firm — Week 2 in progress, 769 tests green*
+**Crucible — Agentic Simulation Platform**  
+*Generalized simulation platform for consulting firm — Week 1 (core engine) complete, 268 tests green*
 
 Crucible is a proprietary agentic simulation platform enabling the firm to rapidly build, run, and deliver scenario-based models across market sectors for public and private sector clients.
 
@@ -388,39 +388,24 @@ crucible/
 
 ## Status
 
-**Date:** March 26, 2026. **Week 2 in progress.**
+**Date:** March 25, 2026. **Week 1 complete.** All core engine modules built and tested.
 
-### Delivered (769 tests, all green):
+### Week 1 delivered (268 tests, all green):
+- `core/spec.py` — SimSpec, BeliefSpec, ActorSpec, TheoryRef, all supporting types
+- `core/agents/base.py` — BDIAgent, DefaultBDIAgent, BetaBelief, GaussianBelief, tick() coordinator
+- `core/theories/base.py` + `__init__.py` — TheoryBase ABC, registry with duplicate-check
+- `core/theories/richardson_arms_race.py` — full Richardson ODE + equilibrium()
+- `core/theories/fearon_bargaining.py` — private info + commitment problem conflict mechanisms
+- `core/theories/wittman_zartman.py` — MHS + ripeness + negotiation probability
+- `core/theories/keynesian_multiplier.py` — multiplier, signed shock encoding, Okun's Law
+- `core/theories/porter_five_forces.py` — five force variables + profitability
+- `core/sim_runner.py` — tick engine, snapshots, triggers, thread-safe, asyncio-compatible
+- `requirements.txt`, ARCHITECTURE.md, README.md, CONTEXT.md all updated
 
-**Week 1 — core engine:**
-- `core/spec.py`, `core/agents/base.py`, `core/sim_runner.py`
-- `core/theories/`: richardson_arms_race, fearon_bargaining, wittman_zartman, keynesian_multiplier, porter_five_forces
-
-**Week 2, session 1 — theory library expansion (high priority):**
-- `core/theories/bass_diffusion.py` — S-curve adoption. market_id param.
-- `core/theories/sir_contagion.py` — SIR compartmental contagion. contagion_id param.
-- `core/theories/opinion_dynamics.py` — Deffuant bounded confidence. domain_id param.
-
-**Week 2, session 2 — theory library expansion (medium priority):**
-- `core/theories/principal_agent.py` — Holmström incentive alignment. agent_id param.
-- `core/theories/cournot_oligopoly.py` — Cournot duopoly + Nash equilibrium. market_id param.
-- `core/theories/regulatory_shock.py` — Regulatory event propagation + adaptation. regulation_id param.
-
-**Week 2, session 3 — theory library expansion (lower priority):**
-- `core/theories/experience_curve.py` — Wright's Law learning curve. curve_id param.
-- `core/theories/hotelling_cpr.py` — Hotelling scarcity rent + Ostrom CPR governance. resource_id param.
-
-**Week 2, session 4 — 9 additional theories:**
-- `minsky_instability`, `solow_growth`, `lotka_volterra` (high priority)
-- `is_lm`, `schumpeter_disruption`, `stackelberg_leadership` (medium priority)
-- `efficiency_wages`, `cobweb_market`, `fisher_pry` (lower priority)
-
-**22 theories total. All instance-namespaced via ID params (multi-instance per sim).**
-
-### Next: Week 2 remaining
+### Next: Week 2
 - Research adapters (arXiv, SSRN, FRED, World Bank, news/RSS)
 - Hormuz scenario port (`scenarios/hormuz/`)
-- Roadmap discussion: path to launchable app
+- Discuss roadmap: path to launchable app (user requested this conversation)
 
 **Hormuz Crisis Simulation — Reference Scenario #1**  
 *Proof of concept sim that Crucible generalizes. Deployed and running. Key architecture and operational notes.*
