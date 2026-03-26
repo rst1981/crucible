@@ -171,7 +171,7 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 
 **Phase:** Week 2 in progress — theory library expanded.
 
-**Test coverage: 514 tests, all passing.**
+**Test coverage: 769 tests, all passing.**
 
 **Implemented (Week 1):**
 - `core/spec.py` — SimSpec, BeliefSpec, ActorSpec, TheoryRef, EnvKeySpec, SpecDiff, diff_simspecs(), branch_simspec()
@@ -199,6 +199,17 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 - `core/theories/experience_curve.py` — Wright (1936) Learning Curve. `b = -log(lr)/log(2)`; per-tick ratio form `C_new = C_old × (Q_new/Q_old)^(-b)`. Seeded at `_Q_SEED=0.01` to avoid log(0). `curve_id` param for multi-instance (ev_battery, solar_panel, etc.). Enables: tech cost forecasting, energy transition, manufacturing scenarios.
 - `core/theories/hotelling_cpr.py` — Hotelling (1931) scarcity rent + Ostrom (1990) CPR governance. CPR blends uncapped extraction with sustainable-yield cap via governance parameter. Hotelling price path: rent grows at discount_rate, anchored by stock depletion signal. `resource_id` param. Enables: energy, water, mining, fisheries, sustainability scenarios.
 
+**Implemented (Week 2, session 4 — 9 additional theories):**
+- `core/theories/minsky_instability.py` — Minsky (1986) financial instability. Compartmental model: hedge→speculative→Ponzi phases. Boom/stress signals drive phase transitions. crash_risk nonlinear in Ponzi fraction. `cycle_id` param. Enables: debt cycles, banking crises, bubble scenarios.
+- `core/theories/solow_growth.py` — Solow (1956) neoclassical growth. Normalized Cobb-Douglas ODE (κ^α convergence). TFP shock param. `economy_id` param. Enables: development economics, long-run growth, sanctions, post-conflict recovery.
+- `core/theories/lotka_volterra.py` — Lotka-Volterra predator-prey. Incumbent (prey) vs challenger (predator) market dynamics. innovation_boost param (external). `ecosystem_id` param. Enables: market disruption, incumbent vs disruptor, ecological/industry competition.
+- `core/theories/is_lm.py` — Hicks (1937) IS-LM. Dynamic IS curve (goods market) + LM curve (money market). fiscal_stimulus and money_supply are external inputs. Writes output_gap, interest_rate, investment, is_lm_gap. `market_id` param. Enables: monetary/fiscal policy, central bank scenarios.
+- `core/theories/schumpeter_disruption.py` — Schumpeter (1942) creative destruction. Incumbent logistic growth vs innovator S-curve. R&D investment (external) boosts innovator. `creative_destruction` = γ×I×N. `innovation_id` param. Enables: tech disruption, industry transformation, startup scenarios.
+- `core/theories/stackelberg_leadership.py` — Stackelberg (1934) leader-follower. Leader commits first (slower), follower best-responds (faster). `stackelberg_equilibrium()` method. `market_id` param. Enables: supply chain power, first-mover advantage, market entry.
+- `core/theories/efficiency_wages.py` — Shapiro-Stiglitz (1984) efficiency wages. NSC: monitoring×wage_premium/effort_cost drives effort. Unemployment as discipline device. `wage_premium` is external (set by firms). `labor_id` param. Enables: labor markets, corporate governance, gig economy.
+- `core/theories/cobweb_market.py` — Ezekiel (1938) cobweb theorem. Lagged supply response creates price oscillations. Convergent when demand_elasticity > supply_elasticity. `supply_shock`/`demand_shock` external inputs. `market_id` param. Enables: commodity markets, housing, agriculture.
+- `core/theories/fisher_pry.py` — Fisher-Pry (1971) technology substitution. Logistic substitution df/dt=α×f×(1-f). Cost reduction (from experience curve) and GDP accelerate substitution. `tech_id` param. Enables: energy transition, format wars, EV adoption, platform displacement.
+
 **Architecture documents (all current):**
 - `ARCHITECTURE.md` — engine: SimSpec, BDIAgent, TheoryBase, SimRunner design
 - `ARCHITECTURE-THEORIES.md` — full math for all 5 original theory modules with empirical parameter ranges
@@ -208,7 +219,7 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 - `TODOS.md` — 13 deferred items with priority and context
 - `Amir.md` — 7-section stakeholder briefing
 
-**Theory library — complete inventory (13 theories):**
+**Theory library — complete inventory (22 theories):**
 
 | ID | Domain | What it models |
 |----|--------|----------------|
@@ -225,6 +236,15 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 | `regulatory_shock` | regulation/policy | Compliance cost, adaptation, exit risk |
 | `experience_curve` | technology/manufacturing | Wright's Law unit cost learning |
 | `hotelling_cpr` | resources/sustainability | Scarcity rent + CPR governance |
+| `minsky_instability` | finance/banking | Debt cycle phases (hedge→speculative→Ponzi) |
+| `solow_growth` | macro/development | Capital accumulation, TFP, SS convergence |
+| `lotka_volterra` | market/disruption | Predator-prey competitive dynamics |
+| `is_lm` | macro/monetary | IS-LM output gap + interest rate equilibrium |
+| `schumpeter_disruption` | innovation/technology | Creative destruction, incumbent displacement |
+| `stackelberg_leadership` | market/game_theory | Leader-follower first-mover advantage |
+| `efficiency_wages` | labor/governance | Shapiro-Stiglitz effort + unemployment |
+| `cobweb_market` | commodity/agriculture | Lagged supply price oscillations |
+| `fisher_pry` | technology/substitution | Logistic tech-for-tech replacement |
 
 **Cross-theory data flow (new additions):**
 - Bass reads `keynesian__gdp_normalized` + `global__trade_volume`
@@ -281,7 +301,7 @@ NEVER run `npx vercel --prod` or any Vercel CLI deploy command. It creates dupli
 ### Project Context
 
 **Crucible — Agentic Simulation Platform**
-*Generalized simulation platform for consulting firm — Week 2 in progress, 514 tests green*
+*Generalized simulation platform for consulting firm — Week 2 in progress, 769 tests green*
 
 Crucible is a proprietary agentic simulation platform enabling the firm to rapidly build, run, and deliver scenario-based models across market sectors for public and private sector clients.
 
@@ -370,7 +390,7 @@ crucible/
 
 **Date:** March 26, 2026. **Week 2 in progress.**
 
-### Delivered (514 tests, all green):
+### Delivered (769 tests, all green):
 
 **Week 1 — core engine:**
 - `core/spec.py`, `core/agents/base.py`, `core/sim_runner.py`
@@ -390,7 +410,12 @@ crucible/
 - `core/theories/experience_curve.py` — Wright's Law learning curve. curve_id param.
 - `core/theories/hotelling_cpr.py` — Hotelling scarcity rent + Ostrom CPR governance. resource_id param.
 
-**13 theories total. All instance-namespaced via ID params (multi-instance per sim).**
+**Week 2, session 4 — 9 additional theories:**
+- `minsky_instability`, `solow_growth`, `lotka_volterra` (high priority)
+- `is_lm`, `schumpeter_disruption`, `stackelberg_leadership` (medium priority)
+- `efficiency_wages`, `cobweb_market`, `fisher_pry` (lower priority)
+
+**22 theories total. All instance-namespaced via ID params (multi-instance per sim).**
 
 ### Next: Week 2 remaining
 - Research adapters (arXiv, SSRN, FRED, World Bank, news/RSS)
