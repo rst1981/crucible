@@ -45,9 +45,18 @@ A research-grounded scoping agent immediately:
 
 The agent builds a **SimSpec** — a structured scenario definition — in the background. When complete, it hands off automatically.
 
-### 2. Simulation Build (Automated)
+### 2. Model Library & Ensemble Selection
 
-The platform selects appropriate theoretical models from a curated library, configures agent-based actors with Bayesian belief systems, and runs the simulation. No manual parameter entry. No bespoke code per engagement.
+Before the simulation launches, the consultant sees a split panel:
+
+- **Claude recommends** a starting ensemble of 3–5 theories based on the scenario description, with a one-sentence rationale for each
+- **The Model Library** lets the consultant browse all 23+ available theories, filter by domain, read parameter details, and swap theories in or out
+
+The resulting theory mix — a named **ensemble** — is saved and attached to the simulation. Clients see which models powered their analysis in the Portal.
+
+### 3. Simulation Build (Automated)
+
+The confirmed ensemble of theoretical models is wired into agent-based actors with Bayesian belief systems, and the simulation runs. No manual parameter entry. No bespoke code per engagement.
 
 ### 3. Live Dashboard
 
@@ -137,7 +146,68 @@ Models are not used in isolation. The Theory Mapper composes them into layered s
 - A **market entry scenario** might layer Porter's Five Forces (structural baseline) + Bass Diffusion (adoption) + Hotelling (positioning) + Principal-Agent (partner dynamics)
 - A **regulatory scenario** might layer Regulatory Shock Propagation + Keynesian Multiplier + Institutional Theory (industry response)
 
-The library grows with each engagement. New theories are formalized and added as reusable modules after each project.
+---
+
+## Model Library
+
+The Model Library is a browsable, searchable interface to the theory catalog — built into both the Forge (consultant-facing) and the Portal (client-facing).
+
+### What it does
+
+- **Browse** — consultants explore all available theories, filter by domain, read parameter details and academic references
+- **Recommend** — when a scenario is described, Claude (claude-haiku) returns a ranked ensemble with one-sentence reasoning per theory and suggested parameter overrides
+- **Build** — consultants start from Claude's recommendation and customize: swap theories, adjust the mix, save named ensembles for reuse
+
+### Intake flow
+
+```
+Consultant describes scenario
+        │
+        ▼
+Scoping Agent builds SimSpec draft
+POST /api/theories/recommend fires in parallel
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  ENSEMBLE SELECTION                                         │
+│                                                             │
+│  Claude recommends          Model Library browse            │
+│  ──────────────────         ─────────────────────────────   │
+│  ✓ Richardson (conflict)    Filter: [conflict] [macro]      │
+│  ✓ Fearon (bargaining)      □ Bass Diffusion                │
+│  ✓ Keynesian (macro)        □ Fearon Bargaining ☑          │
+│  [Why these?] [Run as-is]   □ Minsky Instability            │
+│                             [Details ↗] [Add]               │
+│                                                             │
+│  Current ensemble: Fearon + Richardson + Keynesian  [Run ▶] │
+└─────────────────────────────────────────────────────────────┘
+        │
+        ▼
+SimRunner executes with confirmed ensemble
+```
+
+### Recommendation strategy
+
+The `/api/theories/recommend` endpoint uses a two-stage hybrid approach:
+
+1. **Domain match** (instant) — maps the scenario's domain tag to a pre-computed set of theory IDs
+2. **Claude refinement** (async, claude-haiku-4-5) — re-ranks the domain match results, adds reasoning and suggested parameter overrides; falls back to domain match if the Claude call fails
+
+### Ensemble storage
+
+Named ensembles are saved as JSON files (`data/ensembles/{id}.json`) — no database required for MVP. Each ensemble captures the full `TheoryRef[]` list with any parameter overrides, a name, source (`user` | `system` | `hybrid`), and creation timestamp.
+
+### Client portal integration
+
+The Portal shows a "Models powering this analysis" panel on each scenario view — a read-only summary of which theories were active, their domains, and the academic references behind them.
+
+See `ARCHITECTURE-LIBRARY.md` for the full component tree, API endpoints, and Zustand store definitions.
+
+---
+
+- A **geopolitical scenario** might layer Richardson (escalation) + Fearon (onset logic) + Prospect Theory (decision bias) + Input-Output (economic damage propagation)
+- A **market entry scenario** might layer Porter's Five Forces (structural baseline) + Bass Diffusion (adoption) + Hotelling (positioning) + Principal-Agent (partner dynamics)
+- A **regulatory scenario** might layer Regulatory Shock Propagation + Keynesian Multiplier + Institutional Theory (industry response)
 
 ---
 
@@ -219,15 +289,51 @@ The entry point. A conversational LLM agent (Claude API) that transforms a free-
 
 A set of lightweight adapters that fetch, parse, and summarize external data sources on demand. Used by the Scoping Agent at intake and by the Data Feed Agent at runtime.
 
-| Adapter | Source | Use |
-|---------|--------|-----|
-| `arxiv_adapter` | arXiv API | Academic papers on relevant theory and domain |
-| `ssrn_adapter` | SSRN search | Economics, finance, social science preprints |
-| `fred_adapter` | FRED API | Macro economic time series (GDP, inflation, rates, trade) |
-| `worldbank_adapter` | World Bank API | Development indicators, country-level data |
-| `news_adapter` | RSS / OSINT feeds | Live event tracking, calibration triggers |
+All adapters implement the same `BaseAdapter` interface — they return normalized `ResearchResult` objects and never raise. Failures are encoded as error results so one bad source never blocks the others.
 
-Each adapter returns a normalized `ResearchResult` object (source, title, summary, relevance score, raw data). The Scoping Agent and Theory Mapper consume these uniformly.
+**Academic & preprint sources:**
+
+| Adapter | Source | Auth | Use |
+|---------|--------|------|-----|
+| `arxiv.py` | arXiv API | None | Academic papers on relevant theory and domain |
+| `ssrn.py` | SSRN search | None | Economics, finance, social science preprints |
+
+**Economic & energy data:**
+
+| Adapter | Source | Auth | Use |
+|---------|--------|------|-----|
+| `fred.py` | FRED API | `FRED_API_KEY` (free) | Macro time series: GDP, inflation, rates, trade |
+| `worldbank.py` | World Bank API | None | Development indicators, country-level data |
+| `eia.py` | EIA API / RSS | `EIA_API_KEY` (free, optional) | Energy data: WTI/Brent prices, crude flows, gas; RSS mode works without key |
+
+**Conflict & events:**
+
+| Adapter | Source | Auth | Use |
+|---------|--------|------|-----|
+| `acled.py` | ACLED | `ACLED_API_KEY` + `ACLED_EMAIL` (free, apply) | Structured conflict events with fatalities + intensity signal mapped to theory calibration |
+| `gdelt.py` | GDELT 2.0 | None | Global news tone score [-100, 100]; negative = conflict/crisis signal |
+| `un.py` | UN News + Security Council RSS | None | UN resolutions, sanctions, ceasefire votes; SC articles carry higher relevance weight |
+
+**News & media:**
+
+| Adapter | Source | Auth | Use |
+|---------|--------|------|-----|
+| `news.py` | ~50 curated RSS feeds | None | Parallel feed fetch with keyword relevance scoring; `category=` param restricts to relevant feed subset |
+| `guardian.py` | Guardian Open Platform | `GUARDIAN_API_KEY` (free) | High-quality article summaries; section filtering for world/business/politics |
+| `newsapi.py` | NewsAPI.org | `NEWSAPI_KEY` (free, 100 req/day) | Single endpoint covering 80,000+ sources; broad keyword coverage |
+
+**Curated RSS feed categories** (`news.py`):
+
+| Category | Example sources |
+|----------|----------------|
+| `geopolitics` | BBC World, NYT World, Reuters, Al Jazeera, Foreign Policy, Foreign Affairs, Chatham House, CFR, Crisis Group, Carnegie |
+| `defense` | Defense News, Breaking Defense, CSIS, RAND, IISS, Belfer Center, War on the Rocks, SIPRI, NATO |
+| `economics` | Bloomberg Markets, FT, WSJ Markets, IMF Blog, VoxEU/CEPR, Brookings, Peterson Institute, NBER, World Bank Blog |
+| `energy` | OilPrice.com, EIA Today in Energy, IEA, Oil & Gas Journal, Energy Monitor, S&P Global Commodities |
+| `corporate` | Bloomberg, FT, WSJ Business, Harvard Business Review, The Economist Finance, Fortune Global |
+| `sanctions` | OFAC Recent Actions (Treasury), Reuters, CFR Sanctions Tracker |
+| `think_tanks` | Brookings, Carnegie, Chatham House, CSIS, RAND, Institute for Policy Studies, Wilson Center |
+| `conflict` | Crisis Group, War on the Rocks, IISS, UN Security Council, UN News, Al Jazeera |
 
 ---
 
@@ -324,6 +430,14 @@ This is the "stays current" capability — a simulation launched on Monday refle
 - `WS /simulations/{id}/stream` — real-time tick stream for dashboard
 - `POST /forge/intake` — submit scenario text to Scoping Agent
 - `GET /forge/intake/{session_id}` — poll scoping session state
+- `GET /api/theories` — theory catalog (filterable by domain, keyword)
+- `GET /api/theories/{id}` — theory detail (parameters, env keys, reference)
+- `POST /api/theories/recommend` — Claude-powered ensemble recommendation
+- `GET /api/ensembles` — list saved ensembles
+- `POST /api/ensembles` — create named ensemble
+- `GET /api/ensembles/{id}` — ensemble detail
+- `POST /api/ensembles/{id}/fork` — fork an ensemble under a new name
+- `DELETE /api/ensembles/{id}` — delete ensemble
 
 **Data persistence:**
 - Simulation state: serialized per-tick to append-only log
@@ -426,15 +540,20 @@ Goal: a working simulation engine with the Hormuz scenario running inside the Cr
 - [x] **Theory implementations** — Fearon bargaining, Wittman-Zartman ripeness, Keynesian multiplier, Porter's Five Forces
 - [x] **`requirements.txt`** — pinned deps (fastapi, uvicorn, pydantic, anthropic, apscheduler, sqlalchemy, httpx, redis)
 
-### Week 2 — Research Adapters
+### Week 2 — Research Adapters ✅
 
-- [ ] **`forge/researchers/base.py`** — ResearchResult dataclass + BaseAdapter interface
-- [ ] **`forge/researchers/fred.py`** — FRED API adapter (series search + fetch, returns ResearchResult)
-- [ ] **`forge/researchers/arxiv.py`** — arXiv API adapter (search by keyword, abstract parse)
-- [ ] **`forge/researchers/worldbank.py`** — World Bank indicators adapter
-- [ ] **`forge/researchers/ssrn.py`** — SSRN search adapter (scrape or API)
-- [ ] **`forge/researchers/news.py`** — RSS/OSINT news adapter (configurable feeds)
-- [ ] Adapter integration test: each adapter returns valid ResearchResult for a known query
+- [x] **`forge/researchers/base.py`** — ResearchResult dataclass + BaseAdapter interface (854 tests)
+- [x] **`forge/researchers/arxiv.py`** — arXiv API adapter
+- [x] **`forge/researchers/fred.py`** — FRED API adapter (series search + fetch, `FRED_API_KEY`)
+- [x] **`forge/researchers/worldbank.py`** — World Bank indicators adapter
+- [x] **`forge/researchers/ssrn.py`** — SSRN search adapter (HTML scrape + graceful fallback)
+- [x] **`forge/researchers/news.py`** — ~50 curated RSS feeds across 8 categories (`FEEDS_BY_CATEGORY`, `category=` param)
+- [x] **`forge/researchers/gdelt.py`** — GDELT 2.0 Doc API, tone score for conflict signal (no auth)
+- [x] **`forge/researchers/guardian.py`** — Guardian Open Platform (`GUARDIAN_API_KEY`, free)
+- [x] **`forge/researchers/newsapi.py`** — NewsAPI.org (`NEWSAPI_KEY`, 80k+ sources, free tier)
+- [x] **`forge/researchers/acled.py`** — ACLED conflict events, fatalities + intensity signal (`ACLED_API_KEY` + `ACLED_EMAIL`)
+- [x] **`forge/researchers/eia.py`** — EIA energy data, dual-mode RSS/API (`EIA_API_KEY` optional)
+- [x] **`forge/researchers/un.py`** — UN News + Security Council RSS, SC bonus scoring (no auth)
 
 ### Week 3 — Hormuz Port + End-to-End Smoke Test
 
@@ -464,7 +583,7 @@ Goal: a consultant types a scenario description and gets a running simulation.
 - [ ] **API route: `GET /forge/intake/{session_id}`** — Poll session state + SimSpec progress
 - [ ] **API route: `POST /forge/intake/{session_id}/message`** — Send user message, get agent response (streaming)
 
-### Week 5 — Simulation API
+### Week 5 — Simulation API + Theory Catalog
 
 - [ ] **API route: `POST /simulations`** — Create + start simulation from SimSpec
 - [ ] **API route: `GET /simulations/{id}/state`** — Current simulation state
@@ -473,8 +592,11 @@ Goal: a consultant types a scenario description and gets a running simulation.
 - [ ] **API route: `POST /simulations/{id}/snapshots`** — Save named snapshot
 - [ ] **API route: `GET /simulations/{id}/snapshots`** — List snapshots
 - [ ] **`api/services/sim_service.py`** — Async simulation manager (run in thread pool, track active sims)
+- [ ] **`api/catalog.py`** — Theory catalog extractor (introspects registry at startup, no DB)
+- [ ] **`api/routers/theories.py`** — `GET /api/theories`, `GET /api/theories/{id}`, `POST /api/theories/recommend`
+- [ ] **`api/routers/ensembles.py`** — Ensemble CRUD (`data/ensembles/{id}.json` storage)
 
-### Week 6 — Forge UI
+### Week 6 — Forge UI + Model Library
 
 - [ ] **ForgePage** — Chat interface with streaming agent responses
   - [ ] Research status indicator (live as adapters return)
@@ -484,12 +606,17 @@ Goal: a consultant types a scenario description and gets a running simulation.
   - [ ] KPI panels (WebSocket-fed)
   - [ ] Snapshot timeline marker
   - [ ] Console/narrative feed
-- [ ] React project setup: Vite + TypeScript + Zustand stores + Tailwind
+- [ ] **`/library` page** — Theory card grid with domain filter chips + search
+  - [ ] `TheoryCard` component (name, domains, short description)
+  - [ ] `TheoryDetailModal` (parameters table, env keys, academic reference)
+- [ ] **`/ensembles` page** — List saved ensembles with load/fork/delete
+- [ ] React project setup: Vite + TypeScript + Zustand stores (`theoryStore`, `ensembleStore`) + Tailwind
 
-### Week 7 — End-to-End Integration
+### Week 7 — End-to-End Integration + EnsembleBuilder
 
-- [ ] Full flow test: free-text description → scoping agent → SimSpec → running sim → dashboard
-- [ ] Test with Hormuz scenario: describe it in plain language, verify agent reconstructs a valid SimSpec
+- [ ] **`EnsembleBuilder`** component on IntakePage — split panel: Claude recommends (left) + library browse (right) + current ensemble footer
+- [ ] Full flow test: free-text description → scoping agent → ensemble selection → SimSpec → running sim → dashboard
+- [ ] Test with Hormuz scenario: describe it in plain language, verify agent reconstructs a valid SimSpec and recommends the right theories
 - [ ] **`api/services/data_feed_agent.py`** — Background calibration agent skeleton (APScheduler, news adapter hook)
 - [ ] Error handling: scoping agent timeouts, adapter failures, sim crash recovery
 - [ ] **Local dev setup doc** — README with `uvicorn` run instructions, env vars
@@ -516,6 +643,7 @@ Goal: a live client engagement delivered through Crucible.
   - [ ] Key findings panels with narrative
   - [ ] Snapshot comparison
   - [ ] Export: PDF report generation, data CSV download
+  - [ ] "Models powering this analysis" panel (read-only ensemble summary with academic references)
 - [ ] Auth layer: consultant login (internal) vs. client login (portal-only)
 - [ ] Shareable link generation for portal snapshots
 
