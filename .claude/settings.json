@@ -1,29 +1,28 @@
 {
   "permissions": {
     "allow": [
-      "Bash(pandoc --version)",
-      "Bash(python -c \"import weasyprint; print\\(''weasyprint available''\\)\")",
-      "Bash(python -c \"import markdown2; print\\(''markdown2 available''\\)\")",
-      "Bash(python -c \"import reportlab; print\\(''reportlab available''\\)\")",
-      "Bash(mkdir -p core/agents core/theories forge/researchers forge/specs forge/research api/routers api/services web/src/pages/ForgePage web/src/pages/DashboardPage web/src/pages/PortalPage web/src/stores web/src/components scenarios/hormuz data/snapshots)",
-      "Bash(touch core/__init__.py core/agents/__init__.py core/theories/__init__.py forge/__init__.py forge/researchers/__init__.py api/__init__.py api/routers/__init__.py api/services/__init__.py scenarios/__init__.py scenarios/hormuz/__init__.py)",
-      "Bash(xargs -I{} touch {}/.gitkeep)",
-      "Skill(update-config)",
-      "Skill(update-config:*)",
-      "Bash(node -e \"const s = require\\(''fs''\\).readFileSync\\(''d:/dev/crucible/.claude/settings.json'',''utf8''\\); const j = JSON.parse\\(s\\); console.log\\(j.hooks.Stop[0].hooks[0].command\\);\")",
-      "Bash(schtasks /create /tn \"Crucible-AutosaveContext\" /tr \"bash d:/dev/crucible/scripts/autosave-context.sh\" /sc minute /mo 15 /f)",
-      "Bash(where bash:*)",
-      "Bash(powershell -Command \"schtasks /create /tn ''Crucible-AutosaveContext'' /tr ''C:\\\\Progra~1\\\\Git\\\\usr\\\\bin\\\\bash.exe d:/dev/crucible/scripts/autosave-context.sh'' /sc minute /mo 15 /f\")",
-      "Bash(powershell -Command \"schtasks /query /tn ''Crucible-AutosaveContext'' /fo list\")",
-      "Skill(plan-ceo-review)",
-      "Skill(plan-ceo-review:*)",
-      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); print\\(data[0][''''text'''']\\)\")",
-      "Bash(python3 -c \":*)",
-      "Bash(node -e \":*)",
-      "Skill(plan-eng-review)",
-      "Skill(plan-eng-review:*)",
-      "Bash(python scripts/sync-memory-to-context.py)",
-      "Bash(python -m pytest tests/ -q)"
+      "Bash(git *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(sleep *)",
+      "Bash(find *)",
+      "Bash(du *)",
+      "Bash(node *)",
+      "Bash(for *)",
+      "Bash(powershell *)",
+      "Bash(where *)",
+      "Bash(schtasks *)",
+      "Read(**)",
+      "Skill(*)",
+      "Skill(*:*)"
+    ],
+    "additionalDirectories": [
+      "d:\\dev\\crucible"
     ]
   },
   "hooks": {
