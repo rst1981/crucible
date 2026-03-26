@@ -19,7 +19,9 @@
       "Bash(schtasks *)",
       "Read(**)",
       "Skill(*)",
-      "Skill(*:*)"
+      "Skill(*:*)",
+      "Bash(find /d/dev/crucible/web -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))",
+      "Bash(xargs -I {} basename {} .py)"
     ],
     "additionalDirectories": [
       "d:\\dev\\crucible"
