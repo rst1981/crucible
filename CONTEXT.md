@@ -171,7 +171,7 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 
 **Phase:** Week 2 in progress — theory library expanded.
 
-**Test coverage: 448 tests, all passing.**
+**Test coverage: 514 tests, all passing.**
 
 **Implemented (Week 1):**
 - `core/spec.py` — SimSpec, BeliefSpec, ActorSpec, TheoryRef, EnvKeySpec, SpecDiff, diff_simspecs(), branch_simspec()
@@ -195,6 +195,10 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 - `core/theories/cournot_oligopoly.py` — Cournot (1838) quantity-setting duopoly. Best-response tatônnement dynamics. GDP modulates demand. Outputs quantities, price, margins, HHI concentration. `nash_equilibrium()` method. `market_id` param. Enables: competitive strategy, pricing, antitrust scenarios.
 - `core/theories/regulatory_shock.py` — Regulatory event propagation. Shock injected externally; theory models compliance cost, logistic adaptation, market exit risk, incumbent competitive advantage. GDP slows adaptation. Porter barriers amplify advantage. `regulation_id` param. Enables: carbon pricing, GDPR, financial regulation, antitrust scenarios.
 
+**Implemented (Week 2, session 3 — lower priority theories):**
+- `core/theories/experience_curve.py` — Wright (1936) Learning Curve. `b = -log(lr)/log(2)`; per-tick ratio form `C_new = C_old × (Q_new/Q_old)^(-b)`. Seeded at `_Q_SEED=0.01` to avoid log(0). `curve_id` param for multi-instance (ev_battery, solar_panel, etc.). Enables: tech cost forecasting, energy transition, manufacturing scenarios.
+- `core/theories/hotelling_cpr.py` — Hotelling (1931) scarcity rent + Ostrom (1990) CPR governance. CPR blends uncapped extraction with sustainable-yield cap via governance parameter. Hotelling price path: rent grows at discount_rate, anchored by stock depletion signal. `resource_id` param. Enables: energy, water, mining, fisheries, sustainability scenarios.
+
 **Architecture documents (all current):**
 - `ARCHITECTURE.md` — engine: SimSpec, BDIAgent, TheoryBase, SimRunner design
 - `ARCHITECTURE-THEORIES.md` — full math for all 5 original theory modules with empirical parameter ranges
@@ -204,7 +208,7 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 - `TODOS.md` — 13 deferred items with priority and context
 - `Amir.md` — 7-section stakeholder briefing
 
-**Theory library — complete inventory (8 theories):**
+**Theory library — complete inventory (13 theories):**
 
 | ID | Domain | What it models |
 |----|--------|----------------|
@@ -219,6 +223,8 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 | `principal_agent` | governance/org | Incentive alignment, effort, shirking |
 | `cournot_oligopoly` | market/strategy | Quantity competition, Nash equilibrium |
 | `regulatory_shock` | regulation/policy | Compliance cost, adaptation, exit risk |
+| `experience_curve` | technology/manufacturing | Wright's Law unit cost learning |
+| `hotelling_cpr` | resources/sustainability | Scarcity rent + CPR governance |
 
 **Cross-theory data flow (new additions):**
 - Bass reads `keynesian__gdp_normalized` + `global__trade_volume`
@@ -275,7 +281,7 @@ NEVER run `npx vercel --prod` or any Vercel CLI deploy command. It creates dupli
 ### Project Context
 
 **Crucible — Agentic Simulation Platform**
-*Generalized simulation platform for consulting firm — Week 2 in progress, 360 tests green*
+*Generalized simulation platform for consulting firm — Week 2 in progress, 514 tests green*
 
 Crucible is a proprietary agentic simulation platform enabling the firm to rapidly build, run, and deliver scenario-based models across market sectors for public and private sector clients.
 
@@ -364,7 +370,7 @@ crucible/
 
 **Date:** March 26, 2026. **Week 2 in progress.**
 
-### Delivered (448 tests, all green):
+### Delivered (514 tests, all green):
 
 **Week 1 — core engine:**
 - `core/spec.py`, `core/agents/base.py`, `core/sim_runner.py`
@@ -380,7 +386,11 @@ crucible/
 - `core/theories/cournot_oligopoly.py` — Cournot duopoly + Nash equilibrium. market_id param.
 - `core/theories/regulatory_shock.py` — Regulatory event propagation + adaptation. regulation_id param.
 
-**11 theories total. All instance-namespaced via ID params (multi-instance per sim).**
+**Week 2, session 3 — theory library expansion (lower priority):**
+- `core/theories/experience_curve.py` — Wright's Law learning curve. curve_id param.
+- `core/theories/hotelling_cpr.py` — Hotelling scarcity rent + Ostrom CPR governance. resource_id param.
+
+**13 theories total. All instance-namespaced via ID params (multi-instance per sim).**
 
 ### Next: Week 2 remaining
 - Research adapters (arXiv, SSRN, FRED, World Bank, news/RSS)
