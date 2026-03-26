@@ -152,7 +152,8 @@ class AcquirerDiscount(TheoryBase):
 
     def __init__(self, parameters: dict | None = None) -> None:
         super().__init__(parameters)
-        self._cumulative_ar_raw: float = 0.0  # raw cumulative AR (not normalized)
+        self._cumulative_ar_raw: float = 0.0   # raw cumulative AR (not normalized)
+        self._announcement_fired: bool = False  # fires AR shock only once per instance
 
     @property
     def state_variables(self) -> TheoryStateVariables:
@@ -209,9 +210,10 @@ class AcquirerDiscount(TheoryBase):
         synergy_realized = env.get(f"{a}__synergy_realized", 0.0)
         integration_cost = env.get(f"{a}__integration_cost", 0.0)
 
-        # --- Announcement-day shock (fires once when deal_announced = 1.0) ---
+        # --- Announcement-day shock (fires exactly once per instance) ---
         ar_raw = 0.0
-        if deal_announced > 0.5:
+        if deal_announced > 0.5 and not self._announcement_fired:
+            self._announcement_fired = True
             # Roll (1986) formula: AR = -(premium_fraction × size_ratio × hubris)
             #   × market-skepticism-of-synergies
             premium_fraction = p.deal_premium - 1.0  # e.g. 0.30 for 30% premium
@@ -240,8 +242,9 @@ class AcquirerDiscount(TheoryBase):
 
         # --- Integration cost decay ---
         new_integration_cost = max(0.0, integration_cost * (1.0 - p.integration_completion_rate * dt))
-        if deal_announced > 0.5:
-            new_integration_cost = p.integration_complexity  # reset to peak on announcement
+        # Only reset integration_cost to peak on the exact announcement tick
+        if deal_announced > 0.5 and self._announcement_fired and ar_raw != 0.0:
+            new_integration_cost = p.integration_complexity
 
         # --- Accumulate CAR ---
         self._cumulative_ar_raw += ar_raw

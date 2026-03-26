@@ -1,37 +1,44 @@
 """
 scenarios/estee-lauder/run_simulation.py
 
-Estée Lauder Stock Decline Simulation
---------------------------------------
+Estée Lauder Stock Decline Simulation — v2 (9-module cascade + Monte Carlo)
+-----------------------------------------------------------------------------
 Tick unit : day
 Tick 1    = Feb 25, 2026  (Iran war onset; EL ~$104 after Q2 earnings selloff)
 Tick 28   = March 24, 2026 (Puig acquisition announcement; EL -10.1% on day)
 Tick 30   = March 26, 2026 (today; EL ~$71.60)
 Ticks 31–44 = 14-day forward projection
 
-Six theory modules wired in cascade:
-  sir_contagion → keynesian_multiplier → opinion_dynamics
-                → porter_five_forces
-                → regulatory_shock
-                → schumpeter_disruption
+Nine theory modules in cascade:
+  [sir_contagion]           priority 0 — market panic transmission
+  [keynesian_multiplier]    priority 0 — demand destruction channel
+  [opinion_dynamics]        priority 1 — investor sentiment (stock price proxy)
+  [porter_five_forces]      priority 1 — industry margin compression
+  [regulatory_shock]        priority 2 — tariff + petrochemical input costs
+  [acquirer_discount]       priority 2 — Puig M&A announcement AR (Roll 1986)  ← NEW
+  [brand_equity_decay]      priority 2 — dupe-culture price premium erosion     ← NEW
+  [schumpeter_disruption]   priority 3 — structural market share erosion
+  [event_study]             priority 4 — CAPM abnormal return decomposition     ← NEW
 
-Iran war channel is modelled through:
-  - global__trade_volume shock (Hormuz + Red Sea shipping disruption)
-  - global__energy_cost shock (oil price spike → petrochemical COGS)
-  - keynesian__fiscal_shock_pending (energy inflation → consumer demand contraction)
-  - regulatory__shock_magnitude amplification (petrochemical input cost pass-through)
+Monte Carlo: 300 runs with parameter perturbation + forward scenario sampling.
+  Base (60%): Puig uncertainty persists, no resolution
+  Bull (25%): Puig talks collapse ~tick 34, partial sentiment recovery
+  Bear (15%): Expensive Puig terms confirmed + Iran escalation
 """
 from __future__ import annotations
 
 import json
 import sys
+from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
-# ── repo root on path ───────────────────────────────────────────────────────
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-import core.theories  # noqa: F401 — auto-discovers and registers all theory modules
+import core.theories  # noqa: F401 — auto-discovers all theory modules
 from core.spec import (
     OutcomeMetricSpec,
     SimSpec,
@@ -41,398 +48,603 @@ from core.spec import (
 )
 from core.sim_runner import SimRunner
 
+TOTAL_TICKS = 44
+N_MC = 300
 
-# ── helpers ─────────────────────────────────────────────────────────────────
+# ── Forward scenario shocks (ticks 31–44 only) ──────────────────────────────
 
-def encode_shock(signed_shock: float) -> float:
-    """Encode a signed shock [-1, 1] into [0, 1] storage for keynesian__fiscal_shock_pending."""
-    return max(0.0, min(1.0, 0.5 + signed_shock / 2.0))
+_BULL_SHOCKS: dict[int, dict[str, float]] = {
+    # Puig deal collapse confirmed ~tick 34 — relief rally
+    34: {
+        "investor_sentiment__mean":        +0.15,
+        "investor_sentiment__polarization": -0.12,
+        "global__trade_volume":            +0.04,
+        "global__urgency_factor":          -0.06,
+        "el_puig__synergy_realized":       +0.40,
+    },
+}
+
+_BEAR_SHOCKS: dict[int, dict[str, float]] = {
+    # Expensive Puig terms confirmed
+    34: {
+        "investor_sentiment__mean":        -0.10,
+        "investor_sentiment__polarization": +0.06,
+        "regulation__shock_magnitude":     +0.04,
+        "global__urgency_factor":          +0.04,
+    },
+    # Iran escalation — Hormuz partial blockage
+    36: {
+        "global__trade_volume":            -0.06,
+        "global__energy_cost":             +0.06,
+        "global__urgency_factor":          +0.04,
+        "keynesian__fiscal_shock_pending": -0.04,
+    },
+}
 
 
-def decode_pending(stored: float) -> float:
-    """Decode stored keynesian__fiscal_shock_pending back to signed shock."""
-    return (stored - 0.5) * 2.0
+# ── Base shock schedule ──────────────────────────────────────────────────────
+
+_BASE_SHOCKS: dict[int, dict[str, float]] = {
+    # ── TICK 1: Iran war onset ────────────────────────────────────────────────
+    1: {
+        "global__trade_volume":             -0.12,
+        "global__urgency_factor":           +0.28,
+        "global__energy_cost":              +0.18,
+        "global__market_stress":            +0.25,
+        "keynesian__fiscal_shock_pending":  -0.12,
+        "investor_sentiment__media_bias":   -0.12,
+        "global__market_return":            -0.0625,  # market -2.5% on war onset
+        "el_30day__actual_return":          -0.1250,  # EL -5% on war onset
+        "el_30day__event_active":           +1.0,
+    },
+    # ── TICK 2: reset daily return signals to neutral ─────────────────────────
+    2: {
+        "global__market_return":            +0.0625,
+        "el_30day__actual_return":          +0.1250,
+        "el_30day__event_active":           -1.0,
+    },
+    # ── TICK 3: Petrochemical cascade + shipping rerouting ────────────────────
+    3: {
+        "regulation__shock_magnitude":      +0.18,
+        "global__trade_volume":             -0.04,
+        "porter__supplier_power":           +0.08,
+        "global__energy_cost":              +0.05,
+        "global__competitive_pressure":     +0.04,
+        "global__market_stress":            +0.08,
+    },
+    # ── TICK 7: Tariff escalation crystallises ────────────────────────────────
+    7: {
+        "regulation__shock_magnitude":      +0.14,
+        "keynesian__fiscal_shock_pending":  -0.08,
+        "investor_sentiment__media_bias":   -0.08,
+        "investor_sentiment__polarization": +0.06,
+        "global__competitive_pressure":     +0.03,
+        "global__market_return":            -0.0375,  # market -1.5% on tariff day
+        "el_30day__actual_return":          -0.1000,  # EL -4% on tariff day
+        "el_30day__event_active":           +1.0,
+    },
+    # ── TICK 8: reset daily return signals ───────────────────────────────────
+    8: {
+        "global__market_return":            +0.0375,
+        "el_30day__actual_return":          +0.1000,
+        "el_30day__event_active":           -1.0,
+    },
+    # ── TICK 12: China travel retail confirmed depressed ──────────────────────
+    12: {
+        "porter__substitute_threat":        +0.04,
+        "porter__rivalry_intensity":        +0.03,
+        "investor_sentiment__media_bias":   -0.04,
+        "global__competitive_pressure":     +0.02,
+    },
+    # ── TICK 18: Wholesale destocking / bullwhip effect ───────────────────────
+    18: {
+        "keynesian__fiscal_shock_pending":  -0.06,
+        "porter__buyer_power":              +0.05,
+        "regulation__shock_magnitude":      +0.06,
+        "global__competitive_pressure":     +0.02,
+    },
+    # ── TICK 28: Puig acquisition confirmed ──────────────────────────────────
+    28: {
+        "investor_sentiment__mean":         -0.18,
+        "investor_sentiment__polarization": +0.14,
+        "investor_sentiment__media_bias":   -0.12,
+        "global__urgency_factor":           +0.08,
+        "global__market_stress":            +0.10,
+        "el_puig__deal_announced":          +1.0,    # triggers acquirer_discount module
+        "global__market_return":            -0.0500,  # market -2% on Puig day
+        "el_30day__actual_return":          -0.2525,  # EL -10.1% on Puig day
+        "el_30day__event_active":           +1.0,
+    },
+    # ── TICK 29: reset daily return signals ──────────────────────────────────
+    29: {
+        "global__market_return":            +0.0500,
+        "el_30day__actual_return":          +0.2525,
+        "el_30day__event_active":           -1.0,
+    },
+    # ── TICK 32: Puig uncertainty continues ──────────────────────────────────
+    32: {
+        "investor_sentiment__polarization": +0.06,
+        "investor_sentiment__media_bias":   -0.04,
+    },
+    # ── TICK 38: No macro recovery catalyst ──────────────────────────────────
+    38: {
+        "keynesian__fiscal_shock_pending":  -0.04,
+        "global__urgency_factor":           +0.03,
+    },
+}
+
+# ── Base initial environment ─────────────────────────────────────────────────
+
+_BASE_ENV: dict[str, float] = {
+    # Global cross-theory signals
+    "global__trade_volume":              0.52,
+    "global__urgency_factor":            0.28,
+    "global__energy_cost":               0.55,
+    "global__market_stress":             0.15,
+    "global__competitive_pressure":      0.40,
+    "global__market_return":             0.50,
+
+    # SIR contagion
+    "market_selloff__susceptible":       0.93,
+    "market_selloff__infected":          0.07,
+    "market_selloff__recovered":         0.00,
+    "market_selloff__r_effective":       0.00,
+    "market_selloff__active_contagion":  0.00,
+
+    # Keynesian multiplier
+    "keynesian__gdp_normalized":         0.50,
+    "keynesian__fiscal_shock_pending":   0.50,
+    "keynesian__unemployment":           0.042,
+    "keynesian__multiplier":             0.00,
+    "keynesian__mpc":                    0.72,
+
+    # Opinion dynamics (investor sentiment)
+    "investor_sentiment__mean":          0.52,
+    "investor_sentiment__polarization":  0.32,
+    "investor_sentiment__consensus":     0.68,
+    "investor_sentiment__media_bias":    0.44,
+
+    # Porter five forces
+    "porter__barriers_to_entry":         0.55,
+    "porter__supplier_power":            0.30,
+    "porter__buyer_power":               0.42,
+    "porter__substitute_threat":         0.45,
+    "porter__rivalry_intensity":         0.50,
+    "porter__capacity_investment":       0.00,
+    "porter__profitability":             0.00,
+
+    # Regulatory shock
+    "regulation__shock_magnitude":       0.28,
+    "regulation__adaptation_level":      0.05,
+    "regulation__compliance_cost":       0.00,
+    "regulation__market_exit_risk":      0.00,
+    "regulation__competitive_advantage": 0.00,
+
+    # Acquirer discount (Puig deal) — new
+    "el_puig__deal_announced":           0.00,
+    "el_puig__synergy_realized":         0.00,
+    "el_puig__integration_cost":         0.00,
+    "el_puig__abnormal_return":          0.50,
+    "el_puig__cumulative_ar":            0.50,
+
+    # Brand equity decay — new
+    "el_brand__brand_equity":            0.72,
+    "el_brand__price_premium":           0.302,  # 0.72 × 0.42
+    "el_brand__awareness":               0.85,
+    "el_brand__loyalty":                 0.64,
+    "el_brand__marketing_investment":    0.08,   # cost-cutting mode
+    "el_brand__media_negative":          0.35,
+
+    # Schumpeter disruption
+    "schumpeter__incumbent_share":       0.72,
+    "schumpeter__innovator_share":       0.18,
+    "schumpeter__rd_investment":         0.08,
+    "schumpeter__creative_destruction":  0.00,
+    "schumpeter__market_renewal":        0.00,
+
+    # Event study — new
+    "el_30day__actual_return":           0.50,
+    "el_30day__event_active":            0.00,
+    "el_30day__expected_return":         0.50,
+    "el_30day__abnormal_return":         0.50,
+    "el_30day__cumulative_ar":           0.50,
+}
 
 
-# ── SimSpec ─────────────────────────────────────────────────────────────────
+# ── Theory builder ────────────────────────────────────────────────────────────
 
-TOTAL_TICKS = 44  # 30 historical + 14 forward
+def _make_theories(rng: np.random.Generator | None = None, pct: float = 0.0) -> list[TheoryRef]:
+    """Build theory list, optionally perturbing parameters by ±pct (fraction)."""
 
-spec = SimSpec(
-    name="Estée Lauder — 30-Day Decline & 14-Day Projection",
-    description=(
-        "Multi-theory cascade model explaining EL's ~40% stock decline from Feb–March 2026. "
-        "Shocks: Iran war (Feb 25), US tariff escalation, Puig M&A announcement (March 23-24). "
-        "Structural: dupe/masstige disruption, China travel retail headwind."
-    ),
-    domain="market",
-    theories=[
-        # Priority 0 — runs first: macro/contagion layer
+    def p(base: float, lo: float = 0.001, hi: float = 10.0) -> float:
+        if rng is None or pct == 0.0:
+            return base
+        # Auto-cap at 1.0 when base is a probability/fraction parameter
+        hi_actual = min(hi, 1.0) if base <= 1.0 else hi
+        return float(np.clip(base * (1.0 + rng.normal(0, pct)), lo, hi_actual))
+
+    def ps(base: float) -> float:  # perturb ±pct, clamped to [0,1]
+        return float(np.clip(p(base, 0.0, 1.0), 0.0, 1.0))
+
+    return [
+        # ── Priority 0: macro / contagion ────────────────────────────────────
         TheoryRef(
-            theory_id="sir_contagion",
-            priority=0,
+            theory_id="sir_contagion", priority=0,
             parameters={
-                "beta": 0.35,          # elevated: VIX 25-29, war onset
-                "gamma": 0.12,         # slow recovery: structural headwinds
-                "initial_infected": 0.07,
-                "trade_amplification": 0.55,
-                "contagion_id": "market_selloff",
+                "beta":               p(0.35),
+                "gamma":              p(0.12),
+                "initial_infected":   0.07,
+                "trade_amplification": p(0.55),
+                "contagion_id":       "market_selloff",
             },
         ),
         TheoryRef(
-            theory_id="keynesian_multiplier",
-            priority=0,
+            theory_id="keynesian_multiplier", priority=0,
             parameters={
-                "mpc": 0.72,
-                "tax_rate": 0.28,
-                "import_propensity": 0.18,
-                "decay_rate": 0.15,
-                "okun_coefficient": -0.50,
-                "sanctions_exposure": 0.80,
-                "tick_unit": "day",           # FIX: scale ODE to daily granularity
-                "trade_recovery_rate": 0.004, # slow mean-reversion (~125 days to full recovery)
+                "mpc":                p(0.72, 0.30, 0.95),
+                "tax_rate":           0.28,
+                "import_propensity":  0.18,
+                "decay_rate":         p(0.15),
+                "okun_coefficient":   -0.50,
+                "sanctions_exposure": p(0.80),
+                "tick_unit":          "day",
+                "trade_recovery_rate": p(0.004, 0.0001, 0.05),
             },
         ),
 
-        # Priority 1 — reads GDP + contagion outputs
+        # ── Priority 1: sentiment / competitive structure ─────────────────────
         TheoryRef(
-            theory_id="opinion_dynamics",
-            priority=1,
+            theory_id="opinion_dynamics", priority=1,
             parameters={
-                "epsilon": 0.25,           # bounded-confidence: 9B/12H analyst split
-                "mu": 0.20,
-                "noise_sigma": 0.01,
-                "media_sensitivity": 0.70, # high: Bloomberg saturation, GDELT tone -12 to -18
-                "urgency_polarization_factor": 0.40,
-                "domain_id": "investor_sentiment",
+                "epsilon":                    p(0.25),
+                "mu":                         0.20,
+                "noise_sigma":                0.01,
+                "media_sensitivity":          p(0.70),
+                "urgency_polarization_factor": p(0.40),
+                "domain_id":                  "investor_sentiment",
             },
         ),
         TheoryRef(
-            theory_id="porter_five_forces",
-            priority=1,
+            theory_id="porter_five_forces", priority=1,
             parameters={
-                "w_barriers":  0.15,
-                "w_supplier":  0.05,
-                "w_buyer":     0.25,   # masstige fastest-growing; trade-down visible
-                "w_substitute": 0.35,  # dupe penetration 27% US
-                "w_rivalry":   0.25,   # ELF/NYX/Rare Beauty share gains
-                "base_margin": 0.50,
-                "entry_erosion_rate": 0.02,
+                "w_barriers":                 0.15,
+                "w_supplier":                 0.05,
+                "w_buyer":                    ps(0.25),
+                "w_substitute":               ps(0.35),
+                "w_rivalry":                  ps(0.25),
+                "base_margin":                0.50,
+                "entry_erosion_rate":         0.02,
                 "rivalry_growth_sensitivity": 0.25,
             },
         ),
 
-        # Priority 2 — reads Porter barriers + GDP
+        # ── Priority 2: shocks + new financial models ─────────────────────────
         TheoryRef(
-            theory_id="regulatory_shock",
-            priority=2,
+            theory_id="regulatory_shock", priority=2,
             parameters={
-                "cost_sensitivity": 0.60,   # $100M H2 FY2026 tariff = 2.5% margin
-                "adaptation_rate": 0.08,    # 4-6 quarters to fully adapt supply chain
-                "firm_resilience": 0.20,
-                "incumbent_advantage_factor": 0.50,
-                "gdp_adaptation_sensitivity": 0.40,
-                "regulation_id": "regulation",
+                "cost_sensitivity":            p(0.60),
+                "adaptation_rate":             p(0.08),
+                "firm_resilience":             0.20,
+                "incumbent_advantage_factor":  0.50,
+                "gdp_adaptation_sensitivity":  0.40,
+                "regulation_id":               "regulation",
+            },
+        ),
+        TheoryRef(
+            theory_id="acquirer_discount", priority=2,
+            parameters={
+                "deal_premium":                        p(1.30, 1.05, 1.80),
+                "deal_size_ratio":                     p(0.355, 0.1, 1.0),
+                "hubris_factor":                       ps(0.80),
+                "synergy_realization_probability":     ps(0.40),
+                "integration_complexity":              ps(0.68),
+                "integration_completion_rate":         p(0.25, 0.05, 0.80),
+                "tick_unit":                           "day",
+                "acquirer_id":                         "el_puig",
+            },
+        ),
+        TheoryRef(
+            theory_id="brand_equity_decay", priority=2,
+            parameters={
+                "initial_brand_equity":                0.72,
+                "initial_awareness":                   0.85,
+                "initial_loyalty":                     0.64,
+                "decay_coefficient":                   p(0.12, 0.01, 0.50),
+                "competitive_pressure_sensitivity":    p(0.65),
+                "media_erosion_rate":                  p(0.35),
+                "max_price_premium_fraction":          0.42,
+                "marketing_investment_sensitivity":    p(0.45),
+                "tick_unit":                           "day",
+                "brand_id":                            "el_brand",
             },
         ),
 
-        # Priority 3 — structural layer; reads GDP + profitability
+        # ── Priority 3: structural disruption ─────────────────────────────────
         TheoryRef(
-            theory_id="schumpeter_disruption",
-            priority=3,
+            theory_id="schumpeter_disruption", priority=3,
             parameters={
-                "incumbent_inertia":    0.04,
-                "disruption_coefficient": 0.18,
-                "innovator_growth_rate": 0.22,
-                "incumbent_defense":    0.08,
-                "obsolescence_rate":    0.03,
-                "innovation_id": "schumpeter",
-                "tick_unit": "day",             # FIX: scale ODE to daily granularity
+                "incumbent_inertia":     0.04,
+                "disruption_coefficient": p(0.18),
+                "innovator_growth_rate": p(0.22),
+                "incumbent_defense":     0.08,
+                "obsolescence_rate":     0.03,
+                "innovation_id":         "schumpeter",
+                "tick_unit":             "day",
             },
         ),
-    ],
 
-    timeframe=TimeframeSpec(
-        total_ticks=TOTAL_TICKS,
-        tick_unit="day",
-        start_date="2026-02-25",
-    ),
-
-    # ── Initial environment (Day 0 = Feb 25, 2026) ───────────────────────
-    # EL at ~$104, already -14% from $121 peak after Q2 earnings selloff
-    # Iran war starts today; market stress beginning to build
-    initial_environment={
-        # Global cross-theory signals
-        "global__trade_volume":      0.52,   # near-normal; war not yet priced in
-        "global__urgency_factor":    0.28,   # moderate: existing uncertainty, now war onset
-        "global__energy_cost":       0.55,   # slightly elevated pre-war
-
-        # SIR contagion (market selloff)
-        "market_selloff__susceptible":       0.93,
-        "market_selloff__infected":          0.07,  # initial_infected
-        "market_selloff__recovered":         0.00,
-        "market_selloff__r_effective":       0.00,
-        "market_selloff__active_contagion":  0.00,
-
-        # Keynesian multiplier
-        "keynesian__gdp_normalized":         0.50,  # at baseline (US GDP growth 2.79%)
-        "keynesian__fiscal_shock_pending":   0.50,  # encoded 0.0 — no pending shock yet
-        "keynesian__unemployment":           0.042, # US unemployment ~4.2%
-        "keynesian__multiplier":             0.00,
-        "keynesian__mpc":                    0.72,
-
-        # Opinion dynamics (investor sentiment → stock price proxy)
-        "investor_sentiment__mean":          0.52,  # slightly bearish post-Q2-earnings-selloff
-        "investor_sentiment__polarization":  0.32,  # moderate analyst divergence
-        "investor_sentiment__consensus":     0.68,
-        "investor_sentiment__media_bias":    0.44,  # slightly negative media tone
-
-        # Porter five forces (prestige beauty competitive structure)
-        "porter__barriers_to_entry":    0.55,  # still meaningful barriers for true prestige
-        "porter__supplier_power":       0.30,  # EL has scale leverage
-        "porter__buyer_power":          0.42,  # trade-down already visible pre-war
-        "porter__substitute_threat":    0.45,  # elevated: 27% dupe penetration
-        "porter__rivalry_intensity":    0.50,  # ELF/NYX/Rare Beauty growing fast
-        "porter__capacity_investment":  0.00,
-        "porter__profitability":        0.00,
-
-        # Regulatory shock (tariff + petrochemical input costs)
-        "regulation__shock_magnitude":      0.28,  # pre-existing tariff uncertainty
-        "regulation__adaptation_level":     0.05,  # minor early adaptation started
-        "regulation__compliance_cost":      0.00,
-        "regulation__market_exit_risk":     0.00,
-        "regulation__competitive_advantage": 0.00,
-
-        # Schumpeter disruption (mass/dupe vs prestige incumbent)
-        "schumpeter__incumbent_share":      0.72,  # EL + prestige cohort holding 72%
-        "schumpeter__innovator_share":      0.18,  # mass/dupe brands at 18%
-        "schumpeter__rd_investment":        0.08,  # low: EL in cost-cut mode
-        "schumpeter__creative_destruction": 0.00,
-        "schumpeter__market_renewal":       0.00,
-    },
-
-    # ── Scheduled shocks ─────────────────────────────────────────────────
-    uncertainty=UncertaintySpec(
-        observation_noise_sigma=0.01,
-        shock_probability=0.00,   # disable random shocks — deterministic run
-        shock_magnitude=0.0,
-        scheduled_shocks={
-            # ── TICK 1: Iran war onset ──────────────────────────────────
-            # Strait of Hormuz threat + Red Sea rerouting fully activates
-            # Oil spikes from ~$75 → ~$95-100/bbl (+25-30%)
-            # Shipping insurance war-risk premiums triple
-            # Petrochemical feedstock costs begin rising
-            1: {
-                "global__trade_volume":          -0.12,  # Hormuz + Red Sea disruption
-                "global__urgency_factor":        +0.28,  # geopolitical emergency declared
-                "global__energy_cost":           +0.18,  # oil +25%; energy markets spike
-                "keynesian__fiscal_shock_pending": -0.12, # energy inflation → demand contraction
-                "investor_sentiment__media_bias": -0.12,  # war coverage dominates
+        # ── Priority 4: post-processing / decomposition ───────────────────────
+        TheoryRef(
+            theory_id="event_study", priority=4,
+            parameters={
+                "beta_market":    p(1.15, 0.3, 3.0),
+                "risk_free_rate": 0.045,
+                "alpha":          0.0,
+                "tick_unit":      "day",
+                "event_id":       "el_30day",
             },
-
-            # ── TICK 3: Petrochemical cascade reaches beauty supply chain ──
-            # Ethylene, propylene, surfactant precursors up 15-25%
-            # EL's packaging (PE, PP, PET), emollients (mineral oil, silicones),
-            # surfactants (SLS, PEG) all see cost pressure
-            # Asia-Europe shipping add +10-14 days via Cape of Good Hope rerouting
-            3: {
-                "regulation__shock_magnitude":   +0.18,  # input cost shock amplifies tariff shock
-                "global__trade_volume":          -0.04,  # ongoing routing disruption compounds
-                "porter__supplier_power":        +0.08,  # suppliers passing through petrochem costs
-                "global__energy_cost":           +0.05,  # energy cost firms up further
-            },
-
-            # ── TICK 7: Tariff escalation crystallizes ──────────────────
-            # US tariffs 2.4%→30% fully confirmed on beauty/cosmetics imports
-            # EL management confirms $100M H2 FY2026 headwind on earnings call
-            # Analysts revise forward estimates downward
-            7: {
-                "regulation__shock_magnitude":   +0.14,  # tariff shock stacks on petrochem shock
-                "keynesian__fiscal_shock_pending": -0.08, # tariff inflation → further demand hit
-                "investor_sentiment__media_bias": -0.08,
-                "investor_sentiment__polarization": +0.06,
-            },
-
-            # ── TICK 12: China travel retail remains depressed ──────────
-            # Hainan duty-free data confirms -29.3% YoY channel
-            # Iran war also disrupting APAC luxury travel routes
-            # But mainland China +13% (Q2) is a partial offset
-            12: {
-                "porter__substitute_threat":     +0.04,  # travel retail vacuum fills with local alternatives
-                "porter__rivalry_intensity":     +0.03,  # regional APAC brands fill Hainan channel
-                "investor_sentiment__media_bias": -0.04,
-            },
-
-            # ── TICK 18: Shipping cost pass-through to wholesale margin ─
-            # Cape rerouting adds ~$1.5M per vessel voyage for EL shipments
-            # Wholesale channel starts to feel margin pressure
-            # Retail partners begin reducing orders (bullwhip effect begins)
-            18: {
-                "keynesian__fiscal_shock_pending": -0.06,  # wholesale demand contracts ahead of retail
-                "porter__buyer_power":            +0.05,  # retailers extracting margin concessions
-                "regulation__shock_magnitude":   +0.06,  # logistics cost shock layer
-            },
-
-            # ── TICK 28: Puig acquisition announcement ──────────────────
-            # March 23-24: EL confirms merger talks with Puig (~€8.8B / $10.2B)
-            # EL falls -10.1% in single session
-            # Concerns: dilution, Puig family as largest shareholder, leverage ($40B combined EV)
-            # 61.5% of luxury M&A destroys acquirer value at announcement (SSRN 4845123)
-            28: {
-                "investor_sentiment__mean":        -0.18,  # -10.1% single day → large sentiment shock
-                "investor_sentiment__polarization": +0.14,  # analyst divergence explodes (9B/12H split)
-                "investor_sentiment__media_bias":  -0.12,  # Bloomberg, CNBC, Morningstar coverage negative
-                "global__urgency_factor":          +0.08,  # corporate uncertainty adds to macro urgency
-            },
-
-            # ── TICK 32: Puig deal uncertainty continues (base case) ────
-            # No resolution; analysts issue competing notes
-            # Wells Fargo cut to $90 leads a wave of PT reductions
-            # Uncertainty ceiling prevents recovery
-            32: {
-                "investor_sentiment__polarization": +0.06,
-                "investor_sentiment__media_bias":  -0.04,
-            },
-
-            # ── TICK 38: Macro environment — no recovery catalyst ───────
-            # Next UoM reading expected ~54 (below current 55.5)
-            # No Iran ceasefire talks; VIX sticky 20-28
-            # EL structural story not rebuilt in 14-day window
-            38: {
-                "keynesian__fiscal_shock_pending": -0.04,
-                "global__urgency_factor":          +0.03,
-            },
-        },
-    ),
-
-    # ── Outcome metrics ──────────────────────────────────────────────────
-    metrics=[
-        OutcomeMetricSpec(name="investor_sentiment_mean",
-                          env_key="investor_sentiment__mean",
-                          description="Stock price direction proxy (opinion mean)"),
-        OutcomeMetricSpec(name="investor_sentiment_polarization",
-                          env_key="investor_sentiment__polarization",
-                          description="Implied volatility proxy (analyst divergence)"),
-        OutcomeMetricSpec(name="keynesian_gdp",
-                          env_key="keynesian__gdp_normalized",
-                          description="Macro demand signal"),
-        OutcomeMetricSpec(name="market_selloff_infected",
-                          env_key="market_selloff__infected",
-                          description="Contagion spread — fraction of market actors infected"),
-        OutcomeMetricSpec(name="regulation_compliance_cost",
-                          env_key="regulation__compliance_cost",
-                          description="Margin pressure from tariff + petrochem shocks"),
-        OutcomeMetricSpec(name="porter_profitability",
-                          env_key="porter__profitability",
-                          description="Industry profitability index"),
-        OutcomeMetricSpec(name="schumpeter_creative_destruction",
-                          env_key="schumpeter__creative_destruction",
-                          description="Dupe/masstige disruption intensity"),
-        OutcomeMetricSpec(name="schumpeter_incumbent_share",
-                          env_key="schumpeter__incumbent_share",
-                          description="EL / prestige cohort market share"),
-        OutcomeMetricSpec(name="global_trade_volume",
-                          env_key="global__trade_volume",
-                          description="Global trade disruption from Iran war"),
-        OutcomeMetricSpec(name="global_energy_cost",
-                          env_key="global__energy_cost",
-                          description="Energy cost index (oil price proxy)"),
-        OutcomeMetricSpec(name="regulation_shock_magnitude",
-                          env_key="regulation__shock_magnitude",
-                          description="Combined tariff + petrochem input cost shock"),
-    ],
-)
+        ),
+    ]
 
 
-# ── Run ──────────────────────────────────────────────────────────────────────
+# ── Spec builder ─────────────────────────────────────────────────────────────
 
-def run() -> dict:
+def _make_spec(
+    theories: list[TheoryRef],
+    scenario: str = "base",
+    shock_noise_rng: np.random.Generator | None = None,
+    obs_noise: float = 0.01,
+) -> SimSpec:
+    """Build a SimSpec for one run. scenario ∈ {'base', 'bull', 'bear'}."""
+
+    def jitter(v: float) -> float:
+        if shock_noise_rng is None:
+            return v
+        return float(v * (1.0 + shock_noise_rng.normal(0, 0.20)))
+
+    # Build shock schedule: jitter each shock value, then add scenario shocks
+    scheduled: dict[int, dict[str, float]] = {}
+    for tick, shocks in _BASE_SHOCKS.items():
+        scheduled[tick] = {k: jitter(v) for k, v in shocks.items()}
+
+    extra = _BULL_SHOCKS if scenario == "bull" else _BEAR_SHOCKS if scenario == "bear" else {}
+    for tick, shocks in extra.items():
+        existing = scheduled.get(tick, {})
+        scheduled[tick] = {**existing, **{k: jitter(v) for k, v in shocks.items()}}
+
+    return SimSpec(
+        name="Estée Lauder — 30-Day Decline & 14-Day Projection (v2)",
+        description=(
+            "9-module cascade: sir_contagion, keynesian_multiplier, opinion_dynamics, "
+            "porter_five_forces, regulatory_shock, acquirer_discount, brand_equity_decay, "
+            "schumpeter_disruption, event_study."
+        ),
+        domain="market",
+        theories=theories,
+        timeframe=TimeframeSpec(
+            total_ticks=TOTAL_TICKS,
+            tick_unit="day",
+            start_date="2026-02-25",
+        ),
+        initial_environment=deepcopy(_BASE_ENV),
+        uncertainty=UncertaintySpec(
+            observation_noise_sigma=obs_noise,
+            shock_probability=0.00,
+            shock_magnitude=0.0,
+            scheduled_shocks=scheduled,
+        ),
+        metrics=[
+            OutcomeMetricSpec(name="investor_sentiment_mean",
+                              env_key="investor_sentiment__mean",
+                              description="Stock price direction proxy"),
+            OutcomeMetricSpec(name="investor_sentiment_polarization",
+                              env_key="investor_sentiment__polarization",
+                              description="Analyst divergence / implied vol proxy"),
+            OutcomeMetricSpec(name="keynesian_gdp",
+                              env_key="keynesian__gdp_normalized",
+                              description="Macro demand signal"),
+            OutcomeMetricSpec(name="market_selloff_infected",
+                              env_key="market_selloff__infected",
+                              description="Market contagion — fraction infected"),
+            OutcomeMetricSpec(name="regulation_compliance_cost",
+                              env_key="regulation__compliance_cost",
+                              description="Tariff + petrochem margin pressure"),
+            OutcomeMetricSpec(name="porter_profitability",
+                              env_key="porter__profitability",
+                              description="Industry profitability index"),
+            OutcomeMetricSpec(name="schumpeter_creative_destruction",
+                              env_key="schumpeter__creative_destruction",
+                              description="Dupe/masstige disruption intensity"),
+            OutcomeMetricSpec(name="schumpeter_incumbent_share",
+                              env_key="schumpeter__incumbent_share",
+                              description="EL / prestige cohort market share"),
+            OutcomeMetricSpec(name="global_trade_volume",
+                              env_key="global__trade_volume",
+                              description="Hormuz + Red Sea shipping disruption"),
+            OutcomeMetricSpec(name="global_energy_cost",
+                              env_key="global__energy_cost",
+                              description="Energy cost index (oil spike)"),
+            OutcomeMetricSpec(name="regulation_shock_magnitude",
+                              env_key="regulation__shock_magnitude",
+                              description="Combined tariff + petrochem shock"),
+            # ── New module metrics ──────────────────────────────────────────
+            OutcomeMetricSpec(name="el_puig_cumulative_ar",
+                              env_key="el_puig__cumulative_ar",
+                              description="Puig deal cumulative abnormal return (Roll 1986)"),
+            OutcomeMetricSpec(name="el_puig_integration_cost",
+                              env_key="el_puig__integration_cost",
+                              description="Post-Puig integration cost burden"),
+            OutcomeMetricSpec(name="el_brand_equity",
+                              env_key="el_brand__brand_equity",
+                              description="EL brand equity stock (Keller 1993)"),
+            OutcomeMetricSpec(name="el_brand_price_premium",
+                              env_key="el_brand__price_premium",
+                              description="Willingness-to-pay premium vs. mass"),
+            OutcomeMetricSpec(name="el_brand_loyalty",
+                              env_key="el_brand__loyalty",
+                              description="Consumer loyalty / repeat purchase rate"),
+            OutcomeMetricSpec(name="el_30day_cumulative_ar",
+                              env_key="el_30day__cumulative_ar",
+                              description="Total EL CAR — event-driven abnormal return"),
+            OutcomeMetricSpec(name="el_30day_abnormal_return",
+                              env_key="el_30day__abnormal_return",
+                              description="Daily AR vs. CAPM (MacKinlay 1997)"),
+        ],
+    )
+
+
+# ── Single run ────────────────────────────────────────────────────────────────
+
+def _run_once(spec: SimSpec, seed: int) -> dict[str, list[float]]:
+    """Run one sim; return {metric_name: [value_per_tick]}."""
+    runner = SimRunner(spec, rng_seed=seed)
+    runner.setup()
+    runner.run()
+    series: dict[str, list[float]] = {}
+    for rec in runner.metric_history:
+        series.setdefault(rec.name, []).append(rec.value)
+    return series
+
+
+# ── Monte Carlo ───────────────────────────────────────────────────────────────
+
+def run_monte_carlo(n: int = N_MC, master_seed: int = 0) -> dict[str, Any]:
+    """
+    Run N simulations with:
+    - Perturbed model parameters (±15% normal noise on key params)
+    - ±20% jitter on shock magnitudes
+    - Forward scenario sampling: base 60%, bull 25%, bear 15%
+
+    Returns percentile bands per metric per tick.
+    """
+    master_rng = np.random.default_rng(master_seed)
+    scenario_thresholds = (0.60, 0.85)  # base < 0.60, bull < 0.85, bear otherwise
+
+    # Collect all runs: {metric: array[run, tick]}
+    all_runs: dict[str, list[list[float]]] = {}
+    scenario_counts = {"base": 0, "bull": 0, "bear": 0}
+
+    print(f"Running Monte Carlo ({n} simulations)...")
+    for i in range(n):
+        run_rng = np.random.default_rng(master_rng.integers(0, 2**31))
+
+        r = run_rng.random()
+        scenario = "base" if r < scenario_thresholds[0] else ("bull" if r < scenario_thresholds[1] else "bear")
+        scenario_counts[scenario] += 1
+
+        theories = _make_theories(rng=run_rng, pct=0.15)
+        spec = _make_spec(
+            theories=theories,
+            scenario=scenario,
+            shock_noise_rng=run_rng,
+            obs_noise=0.015,
+        )
+        series = _run_once(spec, seed=int(run_rng.integers(0, 2**31)))
+
+        for metric, vals in series.items():
+            all_runs.setdefault(metric, []).append(vals)
+
+        if (i + 1) % 50 == 0:
+            print(f"  {i + 1}/{n} complete...")
+
+    print(f"MC complete. Scenarios: {scenario_counts}")
+
+    # Compute percentile bands
+    percentiles = [5, 25, 50, 75, 95]
+    bands: dict[str, dict[str, list[float]]] = {}
+    for metric, runs in all_runs.items():
+        arr = np.array(runs)  # shape: (n_runs, n_ticks)
+        bands[metric] = {
+            f"p{pct}": [round(float(v), 4) for v in np.percentile(arr, pct, axis=0)]
+            for pct in percentiles
+        }
+        bands[metric]["mean"] = [round(float(v), 4) for v in arr.mean(axis=0)]
+
+    return {
+        "bands": bands,
+        "scenario_counts": scenario_counts,
+        "n_runs": n,
+    }
+
+
+# ── Deterministic run ─────────────────────────────────────────────────────────
+
+def run_deterministic() -> dict:
+    theories = _make_theories()
+    spec = _make_spec(theories, scenario="base", obs_noise=0.01)
     runner = SimRunner(spec, rng_seed=42)
     runner.setup()
     runner.run()
 
-    # ── Extract metric time series ────────────────────────────────────────
     series: dict[str, list] = {}
     for rec in runner.metric_history:
-        series.setdefault(rec.name, []).append({
-            "tick": rec.tick,
-            "value": round(rec.value, 4),
-        })
+        series.setdefault(rec.name, []).append({"tick": rec.tick, "value": round(rec.value, 4)})
 
-    # ── Final environment state ───────────────────────────────────────────
     final_env = {k: round(v, 4) for k, v in runner.get_current_env().items()}
 
-    # ── Snapshots at key ticks ────────────────────────────────────────────
-    key_ticks = [0, 1, 3, 7, 12, 18, 28, 30, 32, 38, 44]
+    key_ticks = [0, 1, 3, 7, 12, 18, 28, 29, 30, 32, 38, 44]
     snap_envs: dict[int, dict] = {}
     for snap in runner.snapshots:
         if snap.tick in key_ticks:
             snap_envs[snap.tick] = {k: round(v, 4) for k, v in snap.env.items()}
 
-    return {
-        "series":    series,
-        "final_env": final_env,
-        "snapshots": snap_envs,
-    }
+    return {"series": series, "final_env": final_env, "snapshots": snap_envs}
 
+
+# ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("Running Estée Lauder simulation...")
-    results = run()
+    print("Running Estée Lauder simulation (v2 — 9 modules)...")
+
+    det = run_deterministic()
+    mc  = run_monte_carlo(n=N_MC, master_seed=0)
 
     out_path = Path(__file__).parent / "results.json"
     with open(out_path, "w") as f:
-        json.dump(results, f, indent=2)
+        json.dump({"deterministic": det, "monte_carlo": mc}, f, indent=2)
     print(f"Results written to {out_path}")
 
-    # ── Quick summary to stdout ───────────────────────────────────────────
-    series = results["series"]
+    # ── Quick stdout summary ──────────────────────────────────────────────────
+    series = det["series"]
+    mc_bands = mc["bands"]
 
     print("\n── Investor Sentiment (stock price proxy) ─────────────────────")
     for r in series.get("investor_sentiment_mean", []):
-        bar = "█" * int(r["value"] * 40)
-        label = ""
-        if r["tick"] == 1:   label = "  ← Iran war onset"
-        if r["tick"] == 7:   label = "  ← tariff + petrochem shock"
-        if r["tick"] == 28:  label = "  ← PUIG announcement"
-        if r["tick"] == 30:  label = "  ← today (March 26)"
-        if r["tick"] == 44:  label = "  ← projection end (April 9)"
-        if r["tick"] in (1, 5, 7, 10, 12, 15, 18, 20, 25, 28, 30, 32, 35, 38, 41, 44):
-            print(f"  Day {r['tick']:2d} | {r['value']:.3f} | {bar}{label}")
+        if r["tick"] in (0, 1, 7, 12, 18, 28, 30, 38, 44):
+            p50 = mc_bands.get("investor_sentiment_mean", {}).get("p50", [])
+            p50_val = f"  MC_p50={p50[r['tick']]:.3f}" if r["tick"] < len(p50) else ""
+            label = ""
+            if r["tick"] == 1:   label = " ← Iran war"
+            if r["tick"] == 28:  label = " ← PUIG announcement"
+            if r["tick"] == 30:  label = " ← today"
+            if r["tick"] == 44:  label = " ← projection end"
+            bar = "█" * int(r["value"] * 40)
+            print(f"  Day {r['tick']:2d} | {r['value']:.3f}{p50_val} | {bar}{label}")
 
-    print("\n── GDP Normalized (macro demand) ───────────────────────────────")
-    for r in series.get("keynesian_gdp", []):
-        if r["tick"] in (1, 7, 12, 18, 28, 30, 38, 44):
-            print(f"  Day {r['tick']:2d} | {r['value']:.3f}")
+    print("\n── Acquirer Discount — Puig CAR (Roll 1986) ────────────────────")
+    for r in series.get("el_puig_cumulative_ar", []):
+        if r["tick"] in (27, 28, 29, 30, 35, 44):
+            raw_pct = (r["value"] - 0.5) * 40
+            print(f"  Day {r['tick']:2d} | norm={r['value']:.3f} | AR={raw_pct:+.1f}%")
 
-    print("\n── Contagion Infected (market stress spread) ───────────────────")
-    for r in series.get("market_selloff_infected", []):
-        if r["tick"] in (1, 5, 10, 15, 20, 25, 28, 30, 35, 40, 44):
-            print(f"  Day {r['tick']:2d} | {r['value']:.3f}")
+    print("\n── Brand Equity Decay (Keller 1993) ────────────────────────────")
+    for r in series.get("el_brand_equity", []):
+        if r["tick"] in (0, 7, 14, 21, 28, 30, 44):
+            print(f"  Day {r['tick']:2d} | equity={r['value']:.3f}")
 
-    print("\n── Regulation Compliance Cost (tariff + petrochem) ─────────────")
-    for r in series.get("regulation_compliance_cost", []):
-        if r["tick"] in (1, 5, 7, 10, 15, 20, 25, 28, 30, 40, 44):
-            print(f"  Day {r['tick']:2d} | {r['value']:.3f}")
+    print("\n── Event Study CAR — CAPM Abnormal Return (MacKinlay 1997) ─────")
+    for r in series.get("el_30day_cumulative_ar", []):
+        if r["tick"] in (0, 1, 2, 7, 8, 28, 29, 30, 44):
+            raw_pct = (r["value"] - 0.5) * 40
+            print(f"  Day {r['tick']:2d} | CAR={raw_pct:+.1f}%")
 
-    print("\n── Porter Profitability (industry margin) ──────────────────────")
-    for r in series.get("porter_profitability", []):
-        if r["tick"] in (1, 7, 14, 21, 28, 30, 40, 44):
-            print(f"  Day {r['tick']:2d} | {r['value']:.3f}")
-
-    print("\n── Schumpeter Incumbent Share (EL prestige position) ───────────")
-    for r in series.get("schumpeter_incumbent_share", []):
-        if r["tick"] in (1, 10, 20, 28, 30, 44):
-            print(f"  Day {r['tick']:2d} | {r['value']:.3f}")
-
-    print("\n── Global Trade Volume (Hormuz + Red Sea disruption) ───────────")
-    for r in series.get("global_trade_volume", []):
-        if r["tick"] in (1, 3, 7, 14, 21, 28, 30, 44):
-            print(f"  Day {r['tick']:2d} | {r['value']:.3f}")
-
-    print("\n── Energy Cost Index (oil price proxy) ─────────────────────────")
-    for r in series.get("global_energy_cost", []):
-        if r["tick"] in (1, 3, 7, 14, 28, 30, 44):
-            print(f"  Day {r['tick']:2d} | {r['value']:.3f}")
+    print("\n── Monte Carlo Forward Distribution (Day 44) ───────────────────")
+    for metric in ("investor_sentiment_mean", "keynesian_gdp", "el_brand_equity"):
+        b = mc_bands.get(metric, {})
+        if b:
+            last = len(b.get("p50", [0])) - 1
+            p5, p25, p50, p75, p95 = (b.get(f"p{p}", [0])[last]
+                                       for p in (5, 25, 50, 75, 95))
+            print(f"  {metric:<35} p5={p5:.3f} p25={p25:.3f} p50={p50:.3f} p75={p75:.3f} p95={p95:.3f}")
 
     print("\nDone.")
