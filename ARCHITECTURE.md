@@ -12,9 +12,15 @@
 | SimSpec | `core/spec.py` | ✅ Implemented | 57 passing |
 | BDI Agents | `core/agents/base.py` | ✅ Implemented | 131 passing |
 | Theory base + registry | `core/theories/base.py`, `__init__.py` | ✅ Implemented | 32 passing |
-| Richardson Arms Race | `core/theories/richardson_arms_race.py` | ✅ Implemented | 30 passing |
-| SimRunner | `core/sim_runner.py` | 🔲 Next | — |
-| Remaining theories | Fearon, Wittman-Zartman, Keynesian, Porter | 🔲 Pending | — |
+| SimRunner | `core/sim_runner.py` | ✅ Implemented | — |
+| Theory modules × 23 | `core/theories/` | ✅ Implemented | — |
+| Theory Catalog API | `api/catalog.py`, `api/routers/theories.py` | 🔲 Week 5 | — |
+| Ensemble API | `api/routers/ensembles.py` | 🔲 Week 5 | — |
+| Recommendation service | `api/services/recommendation.py` | 🔲 Week 5 | — |
+| Model Library UI | `web/src/pages/LibraryPage.tsx` | 🔲 Week 6 | — |
+| Ensemble Builder UI | `web/src/components/EnsembleBuilder.tsx` | 🔲 Week 7 | — |
+
+See [ARCHITECTURE-LIBRARY.md](ARCHITECTURE-LIBRARY.md) for full Model Library design.
 
 ---
 
