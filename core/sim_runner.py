@@ -54,6 +54,7 @@ class MetricRecord:
     metric_id: str
     env_key: str
     value: float
+    name: str = ""
 
 
 # ── Snapshot triggers ──────────────────────────────────────────────────────
@@ -273,6 +274,7 @@ class SimRunner:
                                 metric_id=metric.metric_id,
                                 env_key=metric.env_key,
                                 value=self.env[metric.env_key],
+                                name=metric.name,
                             ))
 
                     # 9. Recharge capabilities

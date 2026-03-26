@@ -61,7 +61,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_DT_MAP: dict[str, float] = {"month": 1.0 / 12.0, "quarter": 0.25, "year": 1.0}
+_DT_MAP: dict[str, float] = {"day": 1.0 / 365.0, "week": 1.0 / 52.0, "month": 1.0 / 12.0, "quarter": 0.25, "year": 1.0}
 
 
 @register_theory("schumpeter_disruption")

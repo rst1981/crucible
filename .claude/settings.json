@@ -1,30 +1,19 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git *)",
-      "Bash(python *)",
-      "Bash(python3 *)",
-      "Bash(mkdir *)",
-      "Bash(cp *)",
-      "Bash(mv *)",
-      "Bash(ls *)",
-      "Bash(cat *)",
-      "Bash(sleep *)",
-      "Bash(find *)",
-      "Bash(du *)",
-      "Bash(node *)",
-      "Bash(for *)",
-      "Bash(powershell *)",
-      "Bash(where *)",
-      "Bash(schtasks *)",
+      "Bash(*)",
       "Read(**)",
+      "Edit(**)",
+      "Write(**)",
+      "Glob(**)",
+      "Grep(**)",
       "Skill(*)",
       "Skill(*:*)",
-      "Bash(find /d/dev/crucible/web -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))",
-      "Bash(xargs -I {} basename {} .py)"
+      "WebSearch",
+      "WebFetch"
     ],
     "additionalDirectories": [
-      "d:\\dev\\crucible"
+      "/Users/richtakacs/crucible"
     ]
   },
   "hooks": {
@@ -33,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd d:/dev/crucible && git add CONTEXT.md && git diff --cached --quiet || (git commit -m \"Update CONTEXT.md session notes\" && git push)",
+            "command": "cd /Users/richtakacs/crucible && git add CONTEXT.md && git diff --cached --quiet || (git commit -m \"Update CONTEXT.md session notes\" && git push)",
             "timeout": 30
           }
         ]

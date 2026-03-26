@@ -1,0 +1,2108 @@
+{
+  "series": {
+    "investor_sentiment_mean": [
+      {
+        "tick": 0,
+        "value": 0.464
+      },
+      {
+        "tick": 1,
+        "value": 0.3632
+      },
+      {
+        "tick": 2,
+        "value": 0.333
+      },
+      {
+        "tick": 3,
+        "value": 0.3239
+      },
+      {
+        "tick": 4,
+        "value": 0.3212
+      },
+      {
+        "tick": 5,
+        "value": 0.3203
+      },
+      {
+        "tick": 6,
+        "value": 0.3201
+      },
+      {
+        "tick": 7,
+        "value": 0.264
+      },
+      {
+        "tick": 8,
+        "value": 0.2472
+      },
+      {
+        "tick": 9,
+        "value": 0.2422
+      },
+      {
+        "tick": 10,
+        "value": 0.2406
+      },
+      {
+        "tick": 11,
+        "value": 0.2402
+      },
+      {
+        "tick": 12,
+        "value": 0.2121
+      },
+      {
+        "tick": 13,
+        "value": 0.2036
+      },
+      {
+        "tick": 14,
+        "value": 0.2011
+      },
+      {
+        "tick": 15,
+        "value": 0.2003
+      },
+      {
+        "tick": 16,
+        "value": 0.2001
+      },
+      {
+        "tick": 17,
+        "value": 0.2
+      },
+      {
+        "tick": 18,
+        "value": 0.2
+      },
+      {
+        "tick": 19,
+        "value": 0.2
+      },
+      {
+        "tick": 20,
+        "value": 0.2
+      },
+      {
+        "tick": 21,
+        "value": 0.2
+      },
+      {
+        "tick": 22,
+        "value": 0.2
+      },
+      {
+        "tick": 23,
+        "value": 0.2
+      },
+      {
+        "tick": 24,
+        "value": 0.2
+      },
+      {
+        "tick": 25,
+        "value": 0.2
+      },
+      {
+        "tick": 26,
+        "value": 0.2
+      },
+      {
+        "tick": 27,
+        "value": 0.2
+      },
+      {
+        "tick": 28,
+        "value": 0.062
+      },
+      {
+        "tick": 29,
+        "value": 0.0746
+      },
+      {
+        "tick": 30,
+        "value": 0.0784
+      },
+      {
+        "tick": 31,
+        "value": 0.0795
+      },
+      {
+        "tick": 32,
+        "value": 0.0519
+      },
+      {
+        "tick": 33,
+        "value": 0.0436
+      },
+      {
+        "tick": 34,
+        "value": 0.0411
+      },
+      {
+        "tick": 35,
+        "value": 0.0403
+      },
+      {
+        "tick": 36,
+        "value": 0.0401
+      },
+      {
+        "tick": 37,
+        "value": 0.04
+      },
+      {
+        "tick": 38,
+        "value": 0.04
+      },
+      {
+        "tick": 39,
+        "value": 0.04
+      },
+      {
+        "tick": 40,
+        "value": 0.04
+      },
+      {
+        "tick": 41,
+        "value": 0.04
+      },
+      {
+        "tick": 42,
+        "value": 0.04
+      },
+      {
+        "tick": 43,
+        "value": 0.04
+      }
+    ],
+    "investor_sentiment_polarization": [
+      {
+        "tick": 0,
+        "value": 0.436
+      },
+      {
+        "tick": 1,
+        "value": 0.7626
+      },
+      {
+        "tick": 2,
+        "value": 1.0
+      },
+      {
+        "tick": 3,
+        "value": 1.0
+      },
+      {
+        "tick": 4,
+        "value": 1.0
+      },
+      {
+        "tick": 5,
+        "value": 1.0
+      },
+      {
+        "tick": 6,
+        "value": 1.0
+      },
+      {
+        "tick": 7,
+        "value": 1.0
+      },
+      {
+        "tick": 8,
+        "value": 1.0
+      },
+      {
+        "tick": 9,
+        "value": 1.0
+      },
+      {
+        "tick": 10,
+        "value": 1.0
+      },
+      {
+        "tick": 11,
+        "value": 1.0
+      },
+      {
+        "tick": 12,
+        "value": 1.0
+      },
+      {
+        "tick": 13,
+        "value": 1.0
+      },
+      {
+        "tick": 14,
+        "value": 1.0
+      },
+      {
+        "tick": 15,
+        "value": 1.0
+      },
+      {
+        "tick": 16,
+        "value": 1.0
+      },
+      {
+        "tick": 17,
+        "value": 1.0
+      },
+      {
+        "tick": 18,
+        "value": 1.0
+      },
+      {
+        "tick": 19,
+        "value": 1.0
+      },
+      {
+        "tick": 20,
+        "value": 1.0
+      },
+      {
+        "tick": 21,
+        "value": 1.0
+      },
+      {
+        "tick": 22,
+        "value": 1.0
+      },
+      {
+        "tick": 23,
+        "value": 1.0
+      },
+      {
+        "tick": 24,
+        "value": 1.0
+      },
+      {
+        "tick": 25,
+        "value": 1.0
+      },
+      {
+        "tick": 26,
+        "value": 1.0
+      },
+      {
+        "tick": 27,
+        "value": 1.0
+      },
+      {
+        "tick": 28,
+        "value": 1.0
+      },
+      {
+        "tick": 29,
+        "value": 1.0
+      },
+      {
+        "tick": 30,
+        "value": 1.0
+      },
+      {
+        "tick": 31,
+        "value": 1.0
+      },
+      {
+        "tick": 32,
+        "value": 1.0
+      },
+      {
+        "tick": 33,
+        "value": 1.0
+      },
+      {
+        "tick": 34,
+        "value": 1.0
+      },
+      {
+        "tick": 35,
+        "value": 1.0
+      },
+      {
+        "tick": 36,
+        "value": 1.0
+      },
+      {
+        "tick": 37,
+        "value": 1.0
+      },
+      {
+        "tick": 38,
+        "value": 1.0
+      },
+      {
+        "tick": 39,
+        "value": 1.0
+      },
+      {
+        "tick": 40,
+        "value": 1.0
+      },
+      {
+        "tick": 41,
+        "value": 1.0
+      },
+      {
+        "tick": 42,
+        "value": 1.0
+      },
+      {
+        "tick": 43,
+        "value": 1.0
+      }
+    ],
+    "keynesian_gdp": [
+      {
+        "tick": 0,
+        "value": 0.5
+      },
+      {
+        "tick": 1,
+        "value": 0.5
+      },
+      {
+        "tick": 2,
+        "value": 0.5
+      },
+      {
+        "tick": 3,
+        "value": 0.5
+      },
+      {
+        "tick": 4,
+        "value": 0.5
+      },
+      {
+        "tick": 5,
+        "value": 0.5
+      },
+      {
+        "tick": 6,
+        "value": 0.5
+      },
+      {
+        "tick": 7,
+        "value": 0.5
+      },
+      {
+        "tick": 8,
+        "value": 0.5
+      },
+      {
+        "tick": 9,
+        "value": 0.5
+      },
+      {
+        "tick": 10,
+        "value": 0.5
+      },
+      {
+        "tick": 11,
+        "value": 0.5
+      },
+      {
+        "tick": 12,
+        "value": 0.5
+      },
+      {
+        "tick": 13,
+        "value": 0.5
+      },
+      {
+        "tick": 14,
+        "value": 0.4999
+      },
+      {
+        "tick": 15,
+        "value": 0.4999
+      },
+      {
+        "tick": 16,
+        "value": 0.4999
+      },
+      {
+        "tick": 17,
+        "value": 0.4999
+      },
+      {
+        "tick": 18,
+        "value": 0.4999
+      },
+      {
+        "tick": 19,
+        "value": 0.4999
+      },
+      {
+        "tick": 20,
+        "value": 0.4999
+      },
+      {
+        "tick": 21,
+        "value": 0.4999
+      },
+      {
+        "tick": 22,
+        "value": 0.4999
+      },
+      {
+        "tick": 23,
+        "value": 0.4999
+      },
+      {
+        "tick": 24,
+        "value": 0.4999
+      },
+      {
+        "tick": 25,
+        "value": 0.4999
+      },
+      {
+        "tick": 26,
+        "value": 0.4999
+      },
+      {
+        "tick": 27,
+        "value": 0.4999
+      },
+      {
+        "tick": 28,
+        "value": 0.4999
+      },
+      {
+        "tick": 29,
+        "value": 0.4999
+      },
+      {
+        "tick": 30,
+        "value": 0.4999
+      },
+      {
+        "tick": 31,
+        "value": 0.4999
+      },
+      {
+        "tick": 32,
+        "value": 0.4999
+      },
+      {
+        "tick": 33,
+        "value": 0.4998
+      },
+      {
+        "tick": 34,
+        "value": 0.4998
+      },
+      {
+        "tick": 35,
+        "value": 0.4998
+      },
+      {
+        "tick": 36,
+        "value": 0.4998
+      },
+      {
+        "tick": 37,
+        "value": 0.4998
+      },
+      {
+        "tick": 38,
+        "value": 0.4998
+      },
+      {
+        "tick": 39,
+        "value": 0.4998
+      },
+      {
+        "tick": 40,
+        "value": 0.4998
+      },
+      {
+        "tick": 41,
+        "value": 0.4998
+      },
+      {
+        "tick": 42,
+        "value": 0.4998
+      },
+      {
+        "tick": 43,
+        "value": 0.4998
+      }
+    ],
+    "market_selloff_infected": [
+      {
+        "tick": 0,
+        "value": 0.0844
+      },
+      {
+        "tick": 1,
+        "value": 0.104
+      },
+      {
+        "tick": 2,
+        "value": 0.127
+      },
+      {
+        "tick": 3,
+        "value": 0.1549
+      },
+      {
+        "tick": 4,
+        "value": 0.1862
+      },
+      {
+        "tick": 5,
+        "value": 0.2201
+      },
+      {
+        "tick": 6,
+        "value": 0.2551
+      },
+      {
+        "tick": 7,
+        "value": 0.2894
+      },
+      {
+        "tick": 8,
+        "value": 0.3206
+      },
+      {
+        "tick": 9,
+        "value": 0.3467
+      },
+      {
+        "tick": 10,
+        "value": 0.3659
+      },
+      {
+        "tick": 11,
+        "value": 0.3771
+      },
+      {
+        "tick": 12,
+        "value": 0.3804
+      },
+      {
+        "tick": 13,
+        "value": 0.3762
+      },
+      {
+        "tick": 14,
+        "value": 0.3658
+      },
+      {
+        "tick": 15,
+        "value": 0.3505
+      },
+      {
+        "tick": 16,
+        "value": 0.3319
+      },
+      {
+        "tick": 17,
+        "value": 0.3111
+      },
+      {
+        "tick": 18,
+        "value": 0.2892
+      },
+      {
+        "tick": 19,
+        "value": 0.2671
+      },
+      {
+        "tick": 20,
+        "value": 0.2453
+      },
+      {
+        "tick": 21,
+        "value": 0.2243
+      },
+      {
+        "tick": 22,
+        "value": 0.2043
+      },
+      {
+        "tick": 23,
+        "value": 0.1856
+      },
+      {
+        "tick": 24,
+        "value": 0.1681
+      },
+      {
+        "tick": 25,
+        "value": 0.1519
+      },
+      {
+        "tick": 26,
+        "value": 0.1371
+      },
+      {
+        "tick": 27,
+        "value": 0.1235
+      },
+      {
+        "tick": 28,
+        "value": 0.1111
+      },
+      {
+        "tick": 29,
+        "value": 0.0999
+      },
+      {
+        "tick": 30,
+        "value": 0.0897
+      },
+      {
+        "tick": 31,
+        "value": 0.0805
+      },
+      {
+        "tick": 32,
+        "value": 0.0722
+      },
+      {
+        "tick": 33,
+        "value": 0.0647
+      },
+      {
+        "tick": 34,
+        "value": 0.0579
+      },
+      {
+        "tick": 35,
+        "value": 0.0518
+      },
+      {
+        "tick": 36,
+        "value": 0.0464
+      },
+      {
+        "tick": 37,
+        "value": 0.0415
+      },
+      {
+        "tick": 38,
+        "value": 0.0371
+      },
+      {
+        "tick": 39,
+        "value": 0.0332
+      },
+      {
+        "tick": 40,
+        "value": 0.0297
+      },
+      {
+        "tick": 41,
+        "value": 0.0265
+      },
+      {
+        "tick": 42,
+        "value": 0.0237
+      },
+      {
+        "tick": 43,
+        "value": 0.0211
+      }
+    ],
+    "regulation_compliance_cost": [
+      {
+        "tick": 0,
+        "value": 0.1468
+      },
+      {
+        "tick": 1,
+        "value": 0.1351
+      },
+      {
+        "tick": 2,
+        "value": 0.1243
+      },
+      {
+        "tick": 3,
+        "value": 0.1878
+      },
+      {
+        "tick": 4,
+        "value": 0.1728
+      },
+      {
+        "tick": 5,
+        "value": 0.159
+      },
+      {
+        "tick": 6,
+        "value": 0.1463
+      },
+      {
+        "tick": 7,
+        "value": 0.1755
+      },
+      {
+        "tick": 8,
+        "value": 0.1615
+      },
+      {
+        "tick": 9,
+        "value": 0.1486
+      },
+      {
+        "tick": 10,
+        "value": 0.1367
+      },
+      {
+        "tick": 11,
+        "value": 0.1257
+      },
+      {
+        "tick": 12,
+        "value": 0.1157
+      },
+      {
+        "tick": 13,
+        "value": 0.1064
+      },
+      {
+        "tick": 14,
+        "value": 0.0979
+      },
+      {
+        "tick": 15,
+        "value": 0.0901
+      },
+      {
+        "tick": 16,
+        "value": 0.0829
+      },
+      {
+        "tick": 17,
+        "value": 0.0762
+      },
+      {
+        "tick": 18,
+        "value": 0.0772
+      },
+      {
+        "tick": 19,
+        "value": 0.071
+      },
+      {
+        "tick": 20,
+        "value": 0.0653
+      },
+      {
+        "tick": 21,
+        "value": 0.0601
+      },
+      {
+        "tick": 22,
+        "value": 0.0553
+      },
+      {
+        "tick": 23,
+        "value": 0.0509
+      },
+      {
+        "tick": 24,
+        "value": 0.0468
+      },
+      {
+        "tick": 25,
+        "value": 0.043
+      },
+      {
+        "tick": 26,
+        "value": 0.0396
+      },
+      {
+        "tick": 27,
+        "value": 0.0364
+      },
+      {
+        "tick": 28,
+        "value": 0.0335
+      },
+      {
+        "tick": 29,
+        "value": 0.0308
+      },
+      {
+        "tick": 30,
+        "value": 0.0284
+      },
+      {
+        "tick": 31,
+        "value": 0.0261
+      },
+      {
+        "tick": 32,
+        "value": 0.024
+      },
+      {
+        "tick": 33,
+        "value": 0.0221
+      },
+      {
+        "tick": 34,
+        "value": 0.0203
+      },
+      {
+        "tick": 35,
+        "value": 0.0187
+      },
+      {
+        "tick": 36,
+        "value": 0.0172
+      },
+      {
+        "tick": 37,
+        "value": 0.0158
+      },
+      {
+        "tick": 38,
+        "value": 0.0146
+      },
+      {
+        "tick": 39,
+        "value": 0.0134
+      },
+      {
+        "tick": 40,
+        "value": 0.0123
+      },
+      {
+        "tick": 41,
+        "value": 0.0113
+      },
+      {
+        "tick": 42,
+        "value": 0.0104
+      },
+      {
+        "tick": 43,
+        "value": 0.0096
+      }
+    ],
+    "porter_profitability": [
+      {
+        "tick": 0,
+        "value": 0.1775
+      },
+      {
+        "tick": 1,
+        "value": 0.175
+      },
+      {
+        "tick": 2,
+        "value": 0.1726
+      },
+      {
+        "tick": 3,
+        "value": 0.1659
+      },
+      {
+        "tick": 4,
+        "value": 0.1633
+      },
+      {
+        "tick": 5,
+        "value": 0.1606
+      },
+      {
+        "tick": 6,
+        "value": 0.158
+      },
+      {
+        "tick": 7,
+        "value": 0.1553
+      },
+      {
+        "tick": 8,
+        "value": 0.1526
+      },
+      {
+        "tick": 9,
+        "value": 0.15
+      },
+      {
+        "tick": 10,
+        "value": 0.1473
+      },
+      {
+        "tick": 11,
+        "value": 0.1446
+      },
+      {
+        "tick": 12,
+        "value": 0.1206
+      },
+      {
+        "tick": 13,
+        "value": 0.1181
+      },
+      {
+        "tick": 14,
+        "value": 0.1155
+      },
+      {
+        "tick": 15,
+        "value": 0.113
+      },
+      {
+        "tick": 16,
+        "value": 0.1105
+      },
+      {
+        "tick": 17,
+        "value": 0.1079
+      },
+      {
+        "tick": 18,
+        "value": 0.093
+      },
+      {
+        "tick": 19,
+        "value": 0.0905
+      },
+      {
+        "tick": 20,
+        "value": 0.0881
+      },
+      {
+        "tick": 21,
+        "value": 0.0857
+      },
+      {
+        "tick": 22,
+        "value": 0.0832
+      },
+      {
+        "tick": 23,
+        "value": 0.0808
+      },
+      {
+        "tick": 24,
+        "value": 0.0783
+      },
+      {
+        "tick": 25,
+        "value": 0.0759
+      },
+      {
+        "tick": 26,
+        "value": 0.0734
+      },
+      {
+        "tick": 27,
+        "value": 0.0724
+      },
+      {
+        "tick": 28,
+        "value": 0.073
+      },
+      {
+        "tick": 29,
+        "value": 0.0735
+      },
+      {
+        "tick": 30,
+        "value": 0.074
+      },
+      {
+        "tick": 31,
+        "value": 0.0745
+      },
+      {
+        "tick": 32,
+        "value": 0.075
+      },
+      {
+        "tick": 33,
+        "value": 0.0755
+      },
+      {
+        "tick": 34,
+        "value": 0.0761
+      },
+      {
+        "tick": 35,
+        "value": 0.0766
+      },
+      {
+        "tick": 36,
+        "value": 0.077
+      },
+      {
+        "tick": 37,
+        "value": 0.0775
+      },
+      {
+        "tick": 38,
+        "value": 0.078
+      },
+      {
+        "tick": 39,
+        "value": 0.0785
+      },
+      {
+        "tick": 40,
+        "value": 0.079
+      },
+      {
+        "tick": 41,
+        "value": 0.0795
+      },
+      {
+        "tick": 42,
+        "value": 0.08
+      },
+      {
+        "tick": 43,
+        "value": 0.0804
+      }
+    ],
+    "schumpeter_creative_destruction": [
+      {
+        "tick": 0,
+        "value": 0.0233
+      },
+      {
+        "tick": 1,
+        "value": 0.0233
+      },
+      {
+        "tick": 2,
+        "value": 0.0233
+      },
+      {
+        "tick": 3,
+        "value": 0.0234
+      },
+      {
+        "tick": 4,
+        "value": 0.0234
+      },
+      {
+        "tick": 5,
+        "value": 0.0234
+      },
+      {
+        "tick": 6,
+        "value": 0.0234
+      },
+      {
+        "tick": 7,
+        "value": 0.0234
+      },
+      {
+        "tick": 8,
+        "value": 0.0234
+      },
+      {
+        "tick": 9,
+        "value": 0.0234
+      },
+      {
+        "tick": 10,
+        "value": 0.0234
+      },
+      {
+        "tick": 11,
+        "value": 0.0234
+      },
+      {
+        "tick": 12,
+        "value": 0.0234
+      },
+      {
+        "tick": 13,
+        "value": 0.0234
+      },
+      {
+        "tick": 14,
+        "value": 0.0234
+      },
+      {
+        "tick": 15,
+        "value": 0.0234
+      },
+      {
+        "tick": 16,
+        "value": 0.0234
+      },
+      {
+        "tick": 17,
+        "value": 0.0234
+      },
+      {
+        "tick": 18,
+        "value": 0.0235
+      },
+      {
+        "tick": 19,
+        "value": 0.0235
+      },
+      {
+        "tick": 20,
+        "value": 0.0235
+      },
+      {
+        "tick": 21,
+        "value": 0.0235
+      },
+      {
+        "tick": 22,
+        "value": 0.0235
+      },
+      {
+        "tick": 23,
+        "value": 0.0235
+      },
+      {
+        "tick": 24,
+        "value": 0.0235
+      },
+      {
+        "tick": 25,
+        "value": 0.0235
+      },
+      {
+        "tick": 26,
+        "value": 0.0235
+      },
+      {
+        "tick": 27,
+        "value": 0.0235
+      },
+      {
+        "tick": 28,
+        "value": 0.0235
+      },
+      {
+        "tick": 29,
+        "value": 0.0235
+      },
+      {
+        "tick": 30,
+        "value": 0.0235
+      },
+      {
+        "tick": 31,
+        "value": 0.0235
+      },
+      {
+        "tick": 32,
+        "value": 0.0235
+      },
+      {
+        "tick": 33,
+        "value": 0.0236
+      },
+      {
+        "tick": 34,
+        "value": 0.0236
+      },
+      {
+        "tick": 35,
+        "value": 0.0236
+      },
+      {
+        "tick": 36,
+        "value": 0.0236
+      },
+      {
+        "tick": 37,
+        "value": 0.0236
+      },
+      {
+        "tick": 38,
+        "value": 0.0236
+      },
+      {
+        "tick": 39,
+        "value": 0.0236
+      },
+      {
+        "tick": 40,
+        "value": 0.0236
+      },
+      {
+        "tick": 41,
+        "value": 0.0236
+      },
+      {
+        "tick": 42,
+        "value": 0.0236
+      },
+      {
+        "tick": 43,
+        "value": 0.0236
+      }
+    ],
+    "schumpeter_incumbent_share": [
+      {
+        "tick": 0,
+        "value": 0.7199
+      },
+      {
+        "tick": 1,
+        "value": 0.7198
+      },
+      {
+        "tick": 2,
+        "value": 0.7197
+      },
+      {
+        "tick": 3,
+        "value": 0.7196
+      },
+      {
+        "tick": 4,
+        "value": 0.7195
+      },
+      {
+        "tick": 5,
+        "value": 0.7194
+      },
+      {
+        "tick": 6,
+        "value": 0.7193
+      },
+      {
+        "tick": 7,
+        "value": 0.7192
+      },
+      {
+        "tick": 8,
+        "value": 0.7191
+      },
+      {
+        "tick": 9,
+        "value": 0.719
+      },
+      {
+        "tick": 10,
+        "value": 0.7189
+      },
+      {
+        "tick": 11,
+        "value": 0.7188
+      },
+      {
+        "tick": 12,
+        "value": 0.7187
+      },
+      {
+        "tick": 13,
+        "value": 0.7186
+      },
+      {
+        "tick": 14,
+        "value": 0.7185
+      },
+      {
+        "tick": 15,
+        "value": 0.7184
+      },
+      {
+        "tick": 16,
+        "value": 0.7183
+      },
+      {
+        "tick": 17,
+        "value": 0.7182
+      },
+      {
+        "tick": 18,
+        "value": 0.7181
+      },
+      {
+        "tick": 19,
+        "value": 0.718
+      },
+      {
+        "tick": 20,
+        "value": 0.7179
+      },
+      {
+        "tick": 21,
+        "value": 0.7178
+      },
+      {
+        "tick": 22,
+        "value": 0.7177
+      },
+      {
+        "tick": 23,
+        "value": 0.7176
+      },
+      {
+        "tick": 24,
+        "value": 0.7175
+      },
+      {
+        "tick": 25,
+        "value": 0.7174
+      },
+      {
+        "tick": 26,
+        "value": 0.7173
+      },
+      {
+        "tick": 27,
+        "value": 0.7172
+      },
+      {
+        "tick": 28,
+        "value": 0.7171
+      },
+      {
+        "tick": 29,
+        "value": 0.717
+      },
+      {
+        "tick": 30,
+        "value": 0.7169
+      },
+      {
+        "tick": 31,
+        "value": 0.7168
+      },
+      {
+        "tick": 32,
+        "value": 0.7167
+      },
+      {
+        "tick": 33,
+        "value": 0.7166
+      },
+      {
+        "tick": 34,
+        "value": 0.7165
+      },
+      {
+        "tick": 35,
+        "value": 0.7164
+      },
+      {
+        "tick": 36,
+        "value": 0.7163
+      },
+      {
+        "tick": 37,
+        "value": 0.7162
+      },
+      {
+        "tick": 38,
+        "value": 0.7161
+      },
+      {
+        "tick": 39,
+        "value": 0.716
+      },
+      {
+        "tick": 40,
+        "value": 0.7159
+      },
+      {
+        "tick": 41,
+        "value": 0.7158
+      },
+      {
+        "tick": 42,
+        "value": 0.7157
+      },
+      {
+        "tick": 43,
+        "value": 0.7156
+      }
+    ],
+    "global_trade_volume": [
+      {
+        "tick": 0,
+        "value": 0.5199
+      },
+      {
+        "tick": 1,
+        "value": 0.4003
+      },
+      {
+        "tick": 2,
+        "value": 0.4007
+      },
+      {
+        "tick": 3,
+        "value": 0.3613
+      },
+      {
+        "tick": 4,
+        "value": 0.3618
+      },
+      {
+        "tick": 5,
+        "value": 0.3624
+      },
+      {
+        "tick": 6,
+        "value": 0.3629
+      },
+      {
+        "tick": 7,
+        "value": 0.3635
+      },
+      {
+        "tick": 8,
+        "value": 0.364
+      },
+      {
+        "tick": 9,
+        "value": 0.3646
+      },
+      {
+        "tick": 10,
+        "value": 0.3651
+      },
+      {
+        "tick": 11,
+        "value": 0.3657
+      },
+      {
+        "tick": 12,
+        "value": 0.3662
+      },
+      {
+        "tick": 13,
+        "value": 0.3667
+      },
+      {
+        "tick": 14,
+        "value": 0.3673
+      },
+      {
+        "tick": 15,
+        "value": 0.3678
+      },
+      {
+        "tick": 16,
+        "value": 0.3683
+      },
+      {
+        "tick": 17,
+        "value": 0.3688
+      },
+      {
+        "tick": 18,
+        "value": 0.3694
+      },
+      {
+        "tick": 19,
+        "value": 0.3699
+      },
+      {
+        "tick": 20,
+        "value": 0.3704
+      },
+      {
+        "tick": 21,
+        "value": 0.3709
+      },
+      {
+        "tick": 22,
+        "value": 0.3714
+      },
+      {
+        "tick": 23,
+        "value": 0.372
+      },
+      {
+        "tick": 24,
+        "value": 0.3725
+      },
+      {
+        "tick": 25,
+        "value": 0.373
+      },
+      {
+        "tick": 26,
+        "value": 0.3735
+      },
+      {
+        "tick": 27,
+        "value": 0.374
+      },
+      {
+        "tick": 28,
+        "value": 0.3745
+      },
+      {
+        "tick": 29,
+        "value": 0.375
+      },
+      {
+        "tick": 30,
+        "value": 0.3755
+      },
+      {
+        "tick": 31,
+        "value": 0.376
+      },
+      {
+        "tick": 32,
+        "value": 0.3765
+      },
+      {
+        "tick": 33,
+        "value": 0.377
+      },
+      {
+        "tick": 34,
+        "value": 0.3775
+      },
+      {
+        "tick": 35,
+        "value": 0.378
+      },
+      {
+        "tick": 36,
+        "value": 0.3785
+      },
+      {
+        "tick": 37,
+        "value": 0.3789
+      },
+      {
+        "tick": 38,
+        "value": 0.3794
+      },
+      {
+        "tick": 39,
+        "value": 0.3799
+      },
+      {
+        "tick": 40,
+        "value": 0.3804
+      },
+      {
+        "tick": 41,
+        "value": 0.3809
+      },
+      {
+        "tick": 42,
+        "value": 0.3814
+      },
+      {
+        "tick": 43,
+        "value": 0.3818
+      }
+    ],
+    "global_energy_cost": [
+      {
+        "tick": 0,
+        "value": 0.55
+      },
+      {
+        "tick": 1,
+        "value": 0.73
+      },
+      {
+        "tick": 2,
+        "value": 0.73
+      },
+      {
+        "tick": 3,
+        "value": 0.78
+      },
+      {
+        "tick": 4,
+        "value": 0.78
+      },
+      {
+        "tick": 5,
+        "value": 0.78
+      },
+      {
+        "tick": 6,
+        "value": 0.78
+      },
+      {
+        "tick": 7,
+        "value": 0.78
+      },
+      {
+        "tick": 8,
+        "value": 0.78
+      },
+      {
+        "tick": 9,
+        "value": 0.78
+      },
+      {
+        "tick": 10,
+        "value": 0.78
+      },
+      {
+        "tick": 11,
+        "value": 0.78
+      },
+      {
+        "tick": 12,
+        "value": 0.78
+      },
+      {
+        "tick": 13,
+        "value": 0.78
+      },
+      {
+        "tick": 14,
+        "value": 0.78
+      },
+      {
+        "tick": 15,
+        "value": 0.78
+      },
+      {
+        "tick": 16,
+        "value": 0.78
+      },
+      {
+        "tick": 17,
+        "value": 0.78
+      },
+      {
+        "tick": 18,
+        "value": 0.78
+      },
+      {
+        "tick": 19,
+        "value": 0.78
+      },
+      {
+        "tick": 20,
+        "value": 0.78
+      },
+      {
+        "tick": 21,
+        "value": 0.78
+      },
+      {
+        "tick": 22,
+        "value": 0.78
+      },
+      {
+        "tick": 23,
+        "value": 0.78
+      },
+      {
+        "tick": 24,
+        "value": 0.78
+      },
+      {
+        "tick": 25,
+        "value": 0.78
+      },
+      {
+        "tick": 26,
+        "value": 0.78
+      },
+      {
+        "tick": 27,
+        "value": 0.78
+      },
+      {
+        "tick": 28,
+        "value": 0.78
+      },
+      {
+        "tick": 29,
+        "value": 0.78
+      },
+      {
+        "tick": 30,
+        "value": 0.78
+      },
+      {
+        "tick": 31,
+        "value": 0.78
+      },
+      {
+        "tick": 32,
+        "value": 0.78
+      },
+      {
+        "tick": 33,
+        "value": 0.78
+      },
+      {
+        "tick": 34,
+        "value": 0.78
+      },
+      {
+        "tick": 35,
+        "value": 0.78
+      },
+      {
+        "tick": 36,
+        "value": 0.78
+      },
+      {
+        "tick": 37,
+        "value": 0.78
+      },
+      {
+        "tick": 38,
+        "value": 0.78
+      },
+      {
+        "tick": 39,
+        "value": 0.78
+      },
+      {
+        "tick": 40,
+        "value": 0.78
+      },
+      {
+        "tick": 41,
+        "value": 0.78
+      },
+      {
+        "tick": 42,
+        "value": 0.78
+      },
+      {
+        "tick": 43,
+        "value": 0.78
+      }
+    ],
+    "regulation_shock_magnitude": [
+      {
+        "tick": 0,
+        "value": 0.28
+      },
+      {
+        "tick": 1,
+        "value": 0.28
+      },
+      {
+        "tick": 2,
+        "value": 0.28
+      },
+      {
+        "tick": 3,
+        "value": 0.46
+      },
+      {
+        "tick": 4,
+        "value": 0.46
+      },
+      {
+        "tick": 5,
+        "value": 0.46
+      },
+      {
+        "tick": 6,
+        "value": 0.46
+      },
+      {
+        "tick": 7,
+        "value": 0.6
+      },
+      {
+        "tick": 8,
+        "value": 0.6
+      },
+      {
+        "tick": 9,
+        "value": 0.6
+      },
+      {
+        "tick": 10,
+        "value": 0.6
+      },
+      {
+        "tick": 11,
+        "value": 0.6
+      },
+      {
+        "tick": 12,
+        "value": 0.6
+      },
+      {
+        "tick": 13,
+        "value": 0.6
+      },
+      {
+        "tick": 14,
+        "value": 0.6
+      },
+      {
+        "tick": 15,
+        "value": 0.6
+      },
+      {
+        "tick": 16,
+        "value": 0.6
+      },
+      {
+        "tick": 17,
+        "value": 0.6
+      },
+      {
+        "tick": 18,
+        "value": 0.66
+      },
+      {
+        "tick": 19,
+        "value": 0.66
+      },
+      {
+        "tick": 20,
+        "value": 0.66
+      },
+      {
+        "tick": 21,
+        "value": 0.66
+      },
+      {
+        "tick": 22,
+        "value": 0.66
+      },
+      {
+        "tick": 23,
+        "value": 0.66
+      },
+      {
+        "tick": 24,
+        "value": 0.66
+      },
+      {
+        "tick": 25,
+        "value": 0.66
+      },
+      {
+        "tick": 26,
+        "value": 0.66
+      },
+      {
+        "tick": 27,
+        "value": 0.66
+      },
+      {
+        "tick": 28,
+        "value": 0.66
+      },
+      {
+        "tick": 29,
+        "value": 0.66
+      },
+      {
+        "tick": 30,
+        "value": 0.66
+      },
+      {
+        "tick": 31,
+        "value": 0.66
+      },
+      {
+        "tick": 32,
+        "value": 0.66
+      },
+      {
+        "tick": 33,
+        "value": 0.66
+      },
+      {
+        "tick": 34,
+        "value": 0.66
+      },
+      {
+        "tick": 35,
+        "value": 0.66
+      },
+      {
+        "tick": 36,
+        "value": 0.66
+      },
+      {
+        "tick": 37,
+        "value": 0.66
+      },
+      {
+        "tick": 38,
+        "value": 0.66
+      },
+      {
+        "tick": 39,
+        "value": 0.66
+      },
+      {
+        "tick": 40,
+        "value": 0.66
+      },
+      {
+        "tick": 41,
+        "value": 0.66
+      },
+      {
+        "tick": 42,
+        "value": 0.66
+      },
+      {
+        "tick": 43,
+        "value": 0.66
+      }
+    ]
+  },
+  "final_env": {
+    "global__trade_volume": 0.3818,
+    "global__urgency_factor": 0.67,
+    "global__energy_cost": 0.78,
+    "market_selloff__susceptible": 0.0333,
+    "market_selloff__infected": 0.0211,
+    "market_selloff__recovered": 0.9455,
+    "market_selloff__r_effective": 0.011,
+    "market_selloff__active_contagion": 1.0,
+    "keynesian__gdp_normalized": 0.4998,
+    "keynesian__fiscal_shock_pending": 0.21,
+    "keynesian__unemployment": 0.0422,
+    "keynesian__multiplier": 0.5038,
+    "keynesian__mpc": 0.72,
+    "investor_sentiment__mean": 0.04,
+    "investor_sentiment__polarization": 1.0,
+    "investor_sentiment__consensus": 0.0,
+    "investor_sentiment__media_bias": 0.04,
+    "porter__barriers_to_entry": 0.0,
+    "porter__supplier_power": 0.3887,
+    "porter__buyer_power": 0.4514,
+    "porter__substitute_threat": 0.4254,
+    "porter__rivalry_intensity": 0.5536,
+    "porter__capacity_investment": 0.0,
+    "porter__profitability": 0.0804,
+    "regulation__shock_magnitude": 0.66,
+    "regulation__adaptation_level": 0.9758,
+    "regulation__compliance_cost": 0.0096,
+    "regulation__market_exit_risk": 0.0,
+    "regulation__competitive_advantage": 0.0048,
+    "schumpeter__incumbent_share": 0.7156,
+    "schumpeter__innovator_share": 0.1834,
+    "schumpeter__rd_investment": 0.08,
+    "schumpeter__creative_destruction": 0.0236,
+    "schumpeter__market_renewal": 0.204
+  },
+  "snapshots": {
+    "12": {
+      "global__trade_volume": 0.3662,
+      "global__urgency_factor": 0.56,
+      "global__energy_cost": 0.78,
+      "market_selloff__susceptible": 0.2715,
+      "market_selloff__infected": 0.3804,
+      "market_selloff__recovered": 0.3482,
+      "market_selloff__r_effective": 0.0909,
+      "market_selloff__active_contagion": 1.0,
+      "keynesian__gdp_normalized": 0.5,
+      "keynesian__fiscal_shock_pending": 0.3014,
+      "keynesian__unemployment": 0.042,
+      "keynesian__multiplier": 0.5038,
+      "keynesian__mpc": 0.72,
+      "investor_sentiment__mean": 0.2121,
+      "investor_sentiment__polarization": 1.0,
+      "investor_sentiment__consensus": 0.0,
+      "investor_sentiment__media_bias": 0.2,
+      "porter__barriers_to_entry": 0.29,
+      "porter__supplier_power": 0.3846,
+      "porter__buyer_power": 0.4176,
+      "porter__substitute_threat": 0.4712,
+      "porter__rivalry_intensity": 0.5374,
+      "porter__capacity_investment": 0.0,
+      "porter__profitability": 0.1206,
+      "regulation__shock_magnitude": 0.6,
+      "regulation__adaptation_level": 0.6787,
+      "regulation__compliance_cost": 0.1157,
+      "regulation__market_exit_risk": 0.0,
+      "regulation__competitive_advantage": 0.0668,
+      "schumpeter__incumbent_share": 0.7187,
+      "schumpeter__innovator_share": 0.181,
+      "schumpeter__rd_investment": 0.08,
+      "schumpeter__creative_destruction": 0.0234,
+      "schumpeter__market_renewal": 0.2012
+    },
+    "28": {
+      "global__trade_volume": 0.3745,
+      "global__urgency_factor": 0.64,
+      "global__energy_cost": 0.78,
+      "market_selloff__susceptible": 0.0472,
+      "market_selloff__infected": 0.1111,
+      "market_selloff__recovered": 0.8417,
+      "market_selloff__r_effective": 0.0157,
+      "market_selloff__active_contagion": 1.0,
+      "keynesian__gdp_normalized": 0.4999,
+      "keynesian__fiscal_shock_pending": 0.2454,
+      "keynesian__unemployment": 0.0421,
+      "keynesian__multiplier": 0.5038,
+      "keynesian__mpc": 0.72,
+      "investor_sentiment__mean": 0.062,
+      "investor_sentiment__polarization": 1.0,
+      "investor_sentiment__consensus": 0.0,
+      "investor_sentiment__media_bias": 0.08,
+      "porter__barriers_to_entry": 0.0,
+      "porter__supplier_power": 0.3869,
+      "porter__buyer_power": 0.4597,
+      "porter__substitute_threat": 0.4458,
+      "porter__rivalry_intensity": 0.547,
+      "porter__capacity_investment": 0.0,
+      "porter__profitability": 0.073,
+      "regulation__shock_magnitude": 0.66,
+      "regulation__adaptation_level": 0.9154,
+      "regulation__compliance_cost": 0.0335,
+      "regulation__market_exit_risk": 0.0,
+      "regulation__competitive_advantage": 0.0168,
+      "schumpeter__incumbent_share": 0.7171,
+      "schumpeter__innovator_share": 0.1822,
+      "schumpeter__rd_investment": 0.08,
+      "schumpeter__creative_destruction": 0.0235,
+      "schumpeter__market_renewal": 0.2026
+    },
+    "32": {
+      "global__trade_volume": 0.3765,
+      "global__urgency_factor": 0.64,
+      "global__energy_cost": 0.78,
+      "market_selloff__susceptible": 0.0404,
+      "market_selloff__infected": 0.0722,
+      "market_selloff__recovered": 0.8874,
+      "market_selloff__r_effective": 0.0134,
+      "market_selloff__active_contagion": 1.0,
+      "keynesian__gdp_normalized": 0.4999,
+      "keynesian__fiscal_shock_pending": 0.2465,
+      "keynesian__unemployment": 0.0421,
+      "keynesian__multiplier": 0.5038,
+      "keynesian__mpc": 0.72,
+      "investor_sentiment__mean": 0.0519,
+      "investor_sentiment__polarization": 1.0,
+      "investor_sentiment__consensus": 0.0,
+      "investor_sentiment__media_bias": 0.04,
+      "porter__barriers_to_entry": 0.0,
+      "porter__supplier_power": 0.3874,
+      "porter__buyer_power": 0.4574,
+      "porter__substitute_threat": 0.44,
+      "porter__rivalry_intensity": 0.5489,
+      "porter__capacity_investment": 0.0,
+      "porter__profitability": 0.075,
+      "regulation__shock_magnitude": 0.66,
+      "regulation__adaptation_level": 0.9394,
+      "regulation__compliance_cost": 0.024,
+      "regulation__market_exit_risk": 0.0,
+      "regulation__competitive_advantage": 0.012,
+      "schumpeter__incumbent_share": 0.7167,
+      "schumpeter__innovator_share": 0.1825,
+      "schumpeter__rd_investment": 0.08,
+      "schumpeter__creative_destruction": 0.0235,
+      "schumpeter__market_renewal": 0.203
+    }
+  }
+}

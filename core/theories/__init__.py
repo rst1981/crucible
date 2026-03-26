@@ -100,3 +100,15 @@ __all__ = [
     "get_theory",
     "list_theories",
 ]
+
+
+def _autodiscover() -> None:
+    """Import every theory module so @register_theory decorators fire."""
+    import importlib
+    import pkgutil
+    import core.theories as _pkg
+    for _mod in pkgutil.iter_modules(_pkg.__path__):
+        if _mod.name not in ("base",):
+            importlib.import_module(f"core.theories.{_mod.name}")
+
+_autodiscover()

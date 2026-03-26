@@ -139,7 +139,7 @@ class ResearchSourceSpec(BaseModel):
 class TheoryRef(BaseModel):
     theory_id:  str            # matches registry key, e.g. "richardson_arms_race"
     priority:   int            = 0  # lower = runs first in tick loop
-    parameters: dict[str, float] = Field(default_factory=dict)
+    parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 # ── Display annotations for env keys ───────────────────────────────────────
