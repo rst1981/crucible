@@ -167,11 +167,11 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 
 ## Current Status
 
-**Date:** March 25, 2026
+**Date:** March 26, 2026
 
-**Phase:** Week 1 complete. Week 2 starting.
+**Phase:** Week 2 in progress — theory library expanded.
 
-**Test coverage: 268 tests, all passing.**
+**Test coverage: 360 tests, all passing.**
 
 **Implemented (Week 1):**
 - `core/spec.py` — SimSpec, BeliefSpec, ActorSpec, TheoryRef, EnvKeySpec, SpecDiff, diff_simspecs(), branch_simspec()
@@ -185,16 +185,39 @@ Located in `.claude/skills/` — invoke with `/skill-name`:
 - `core/sim_runner.py` — tick engine, snapshots, triggers, thread-safe, asyncio-compatible
 - `requirements.txt` — pinned Python deps
 
+**Implemented (Week 2, session 1 — theory library expansion):**
+- `core/theories/bass_diffusion.py` — Bass (1969) S-curve adoption. p/q params, GDP→imitation amplification, trade disruption→innovation suppression. `market_id` param for multi-instance. Enables: tech adoption, market entry, disruption, EV/energy transition scenarios.
+- `core/theories/sir_contagion.py` — SIR compartmental model. S+I+R=1 renormalized per tick. β amplified by trade disruption. `contagion_id` param for multi-instance (banking, supply chain, cyber, etc.). Enables: financial contagion, supply chain failure, crisis spread scenarios.
+- `core/theories/opinion_dynamics.py` — Deffuant (2000) bounded confidence mean-field model. Tracks mean + polarization (normalized std dev). ε controls convergence/fragmentation threshold. Urgency injects polarization; media bias drifts mean. `domain_id` param for multi-instance. Enables: political, reputational, ESG, social license scenarios.
+
 **Architecture documents (all current):**
 - `ARCHITECTURE.md` — engine: SimSpec, BDIAgent, TheoryBase, SimRunner design
-- `ARCHITECTURE-THEORIES.md` — full math for all 5 theory modules with empirical parameter ranges
+- `ARCHITECTURE-THEORIES.md` — full math for all 5 original theory modules with empirical parameter ranges
 - `ARCHITECTURE-FORGE.md` — ForgeSession, ScopingAgent, TheoryMapper, GapDetector
 - `ARCHITECTURE-API.md` — persistence, EnsembleRunner, NarrativeAgent, full FastAPI surface (incl. 16 pre-impl fixes)
 - `ARCHITECTURE-PORTAL.md` — React 19 frontend, Zustand stores, auth model
 - `TODOS.md` — 13 deferred items with priority and context
 - `Amir.md` — 7-section stakeholder briefing
 
-**Week 2 — next:**
+**Theory library — complete inventory (8 theories):**
+
+| ID | Domain | What it models |
+|----|--------|----------------|
+| `richardson_arms_race` | conflict/geopolitics | Mutual arms escalation ODE |
+| `fearon_bargaining` | conflict/crisis | War onset (private info + commitment problem) |
+| `wittman_zartman` | conflict/mediation | War termination, MHS, ripeness |
+| `keynesian_multiplier` | macro/sanctions | Fiscal shocks, multiplier, Okun's Law |
+| `porter_five_forces` | market/strategy | Industry competitive structure |
+| `bass_diffusion` | market/technology | S-curve adoption (innovation + imitation) |
+| `sir_contagion` | contagion/risk | S/I/R spread and recovery |
+| `opinion_dynamics` | social/political | Bounded confidence polarization |
+
+**Cross-theory data flow (new additions):**
+- Bass reads `keynesian__gdp_normalized` + `global__trade_volume`
+- SIR reads `global__trade_volume`
+- Opinion reads `global__urgency_factor` (written by Zartman/agents)
+
+**Week 2 — remaining:**
 1. Research adapters (arXiv, SSRN, FRED, World Bank, news/RSS)
 2. Hormuz scenario port (`scenarios/hormuz/`)
 3. Roadmap discussion: path to launchable app
@@ -243,8 +266,8 @@ NEVER run `npx vercel --prod` or any Vercel CLI deploy command. It creates dupli
 
 ### Project Context
 
-**Crucible — Agentic Simulation Platform**  
-*Generalized simulation platform for consulting firm — Week 1 (core engine) complete, 268 tests green*
+**Crucible — Agentic Simulation Platform**
+*Generalized simulation platform for consulting firm — Week 2 in progress, 360 tests green*
 
 Crucible is a proprietary agentic simulation platform enabling the firm to rapidly build, run, and deliver scenario-based models across market sectors for public and private sector clients.
 
@@ -331,24 +354,25 @@ crucible/
 
 ## Status
 
-**Date:** March 25, 2026. **Week 1 complete.** All core engine modules built and tested.
+**Date:** March 26, 2026. **Week 2 in progress.**
 
-### Week 1 delivered (268 tests, all green):
-- `core/spec.py` — SimSpec, BeliefSpec, ActorSpec, TheoryRef, all supporting types
-- `core/agents/base.py` — BDIAgent, DefaultBDIAgent, BetaBelief, GaussianBelief, tick() coordinator
-- `core/theories/base.py` + `__init__.py` — TheoryBase ABC, registry with duplicate-check
-- `core/theories/richardson_arms_race.py` — full Richardson ODE + equilibrium()
-- `core/theories/fearon_bargaining.py` — private info + commitment problem conflict mechanisms
-- `core/theories/wittman_zartman.py` — MHS + ripeness + negotiation probability
-- `core/theories/keynesian_multiplier.py` — multiplier, signed shock encoding, Okun's Law
-- `core/theories/porter_five_forces.py` — five force variables + profitability
-- `core/sim_runner.py` — tick engine, snapshots, triggers, thread-safe, asyncio-compatible
-- `requirements.txt`, ARCHITECTURE.md, README.md, CONTEXT.md all updated
+### Delivered (360 tests, all green):
 
-### Next: Week 2
+**Week 1 — core engine:**
+- `core/spec.py`, `core/agents/base.py`, `core/sim_runner.py`
+- `core/theories/`: richardson_arms_race, fearon_bargaining, wittman_zartman, keynesian_multiplier, porter_five_forces
+
+**Week 2, session 1 — theory library expansion:**
+- `core/theories/bass_diffusion.py` — S-curve adoption (Bass 1969). market_id param.
+- `core/theories/sir_contagion.py` — SIR compartmental contagion. contagion_id param.
+- `core/theories/opinion_dynamics.py` — Deffuant bounded confidence. domain_id param.
+- All three wired into existing cross-theory env keys (GDP, trade, urgency).
+- 92 new tests.
+
+### Next: Week 2 remaining
 - Research adapters (arXiv, SSRN, FRED, World Bank, news/RSS)
 - Hormuz scenario port (`scenarios/hormuz/`)
-- Discuss roadmap: path to launchable app (user requested this conversation)
+- Roadmap discussion: path to launchable app
 
 **Hormuz Crisis Simulation — Reference Scenario #1**  
 *Proof of concept sim that Crucible generalizes. Deployed and running. Key architecture and operational notes.*
