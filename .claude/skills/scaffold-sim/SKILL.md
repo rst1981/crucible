@@ -313,12 +313,42 @@ Print a scaffold summary:
   ├── run.py           entry point
   └── README.md
 
-Next steps:
-  1. Implement agent belief + decision logic in agents/*.py
-  2. Run /research-data {slug} to populate data/ and patch params
+Full pipeline for this scenario:
+
+  Research
+  ─────────────────────────────────────────────────────
+  1. /research-theory {slug}     → forge/research/theory-brief-{slug}.md
+  2. /research-data {slug}       → forge/research/data-brief-{slug}.md
+
+  Pre-simulation document
+  ─────────────────────────────────────────────────────
+  3. /forge-assessment {slug}    → forge/research/{slug}-assessment.md
+     (merges theory + data briefs; canonical reference before sim runs)
+
+  Simulation
+  ─────────────────────────────────────────────────────
+  4. Implement agent belief + decision logic in agents/*.py
+  5. Verify parameter values against data brief / calibration anchors
   {stub_steps}
-  {N+1}. python scenarios/{slug}/run.py
+  6. python scenarios/{slug}/run_simulation.py
+     (produces scenarios/{slug}/results.json)
+
+  Post-simulation document
+  ─────────────────────────────────────────────────────
+  7. /forge-findings {slug}      → forge/research/{slug}-simulation-results.md
+     (turns results.json into structured findings; assume reader has seen assessment)
+
+  Production build
+  ─────────────────────────────────────────────────────
+  8. python scenarios/{slug}/visualize.py
+     (produces scenarios/{slug}/charts/*.png for embedding in findings doc)
 ```
+
+Standard output artefacts per scenario:
+  - `forge/research/{slug}-assessment.md`       — pre-sim research synthesis
+  - `scenarios/{slug}/results.json`             — raw simulation output
+  - `forge/research/{slug}-simulation-results.md` — post-sim findings doc
+  - `scenarios/{slug}/charts/`                  — visualisations
 
 If `--dry-run`, print this summary only — write no files.
 
