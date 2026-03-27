@@ -102,13 +102,89 @@ __all__ = [
 ]
 
 
+def load_theory_file(path: "str | Path") -> Type[TheoryBase] | None:
+    """
+    Hot-load a single theory module from an arbitrary file path.
+
+    Imports the file as a fresh module, which fires any @register_theory
+    decorators inside it. Call this after writing an approved theory to
+    core/theories/discovered/ to make it available without a server restart.
+
+    Args:
+        path: Absolute path to a .py file containing a @register_theory class.
+
+    Returns:
+        The registered TheoryBase subclass, or None if already registered.
+
+    Raises:
+        ImportError:    if the file cannot be loaded.
+        ValueError:     if the file contains no TheoryBase subclass.
+    """
+    import importlib.util
+    import inspect
+    from pathlib import Path as _Path
+
+    path = _Path(path)
+    module_name = f"_crucible_discovered_{path.stem}"
+
+    if any(
+        getattr(cls, "__module__", "").endswith(path.stem)
+        for cls in _THEORY_REGISTRY.values()
+    ):
+        logger.debug("load_theory_file: %s already registered, skipping", path.stem)
+        return None
+
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load theory file: {path}")
+
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)  # fires @register_theory
+    except ValueError as exc:
+        # Already registered — treat as a no-op (e.g. duplicate hot-load call)
+        logger.warning("load_theory_file: %s", exc)
+        return None
+
+    # Return the newly registered class
+    for cls in vars(module).values():
+        if (
+            inspect.isclass(cls)
+            and issubclass(cls, TheoryBase)
+            and cls is not TheoryBase
+        ):
+            return cls
+
+    raise ValueError(f"No TheoryBase subclass found in {path}")
+
+
 def _autodiscover() -> None:
     """Import every theory module so @register_theory decorators fire."""
     import importlib
     import pkgutil
     import core.theories as _pkg
+    import core.theories.discovered as _discovered_pkg
+    from pathlib import Path as _Path
+
+    # Built-in theories
     for _mod in pkgutil.iter_modules(_pkg.__path__):
-        if _mod.name not in ("base",):
+        if _mod.name not in ("base", "discovered"):
             importlib.import_module(f"core.theories.{_mod.name}")
 
+    # Approved discovered theories — scan .py files directly so we pick up
+    # modules written after the package was first imported
+    _discovered_dir = _Path(_discovered_pkg.__file__).parent
+    for _py in sorted(_discovered_dir.glob("*.py")):
+        if _py.name == "__init__.py":
+            continue
+        try:
+            load_theory_file(_py)
+        except Exception as exc:
+            logger.warning("_autodiscover: failed to load %s — %s", _py.name, exc)
+
+
 _autodiscover()
+
+
+# Lazy import for type hint only — avoids circular import at module level
+from pathlib import Path  # noqa: E402  (used in load_theory_file signature)

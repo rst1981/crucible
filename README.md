@@ -49,10 +49,21 @@ The agent builds a **SimSpec** — a structured scenario definition — in the b
 
 Before the simulation launches, the consultant sees a split panel:
 
-- **Claude recommends** a starting ensemble of 3–5 theories based on the scenario description, with a one-sentence rationale for each
-- **The Model Library** lets the consultant browse all 23+ available theories, filter by domain, read parameter details, and swap theories in or out
+- **Claude recommends** a starting ensemble of 3–5 theories based on the scenario description, with a one-sentence rationale for each — powered by `forge/theory_mapper.py`
+- **The Model Library** lets the consultant browse all 25+ available theories, filter by domain, read parameter details, and swap theories in or out
 
 The resulting theory mix — a named **ensemble** — is saved and attached to the simulation. Clients see which models powered their analysis in the Portal.
+
+### 2a. Automatic Theory Discovery
+
+As the research pipeline runs (arXiv, SSRN adapters), `forge/theory_builder.py` automatically:
+
+1. **Classifies** each paper: does it describe a formal quantitative model?
+2. **Generates** a `TheoryBase` subclass implementation via Claude
+3. **Smoke tests** the generated module (import → instantiate → `update()`)
+4. **Queues** it as a pending theory in `data/theories/pending/`
+
+A consultant reviews pending theories in the Forge UI and approves or rejects each. Approved theories are written to `core/theories/discovered/` and **hot-loaded** into the registry without a server restart — immediately available to the Theory Mapper and all new simulations.
 
 ### 3. Simulation Build (Automated)
 
@@ -536,7 +547,7 @@ Goal: a working simulation engine with the Hormuz scenario running inside the Cr
 - [x] **`core/agents/base.py`** — BDIAgent + DefaultBDIAgent + AgentHydrationError + tick() coordinator + from_spec() factory (131 tests)
 - [x] **`core/theories/base.py`** + **`__init__.py`** — TheoryBase ABC + @register_theory + get_theory/list_theories registry (32 tests)
 - [x] **`core/theories/richardson_arms_race.py`** — Full Richardson ODE implementation with dt scaling, stability check, equilibrium() (30 tests)
-- [ ] **`core/sim_runner.py`** — Domain-agnostic tick loop (initialize → tick → record → snapshot trigger)
+- [x] **`core/sim_runner.py`** — Domain-agnostic tick loop (initialize → tick → record → snapshot trigger) (31 tests)
 - [x] **Theory implementations** — Fearon bargaining, Wittman-Zartman ripeness, Keynesian multiplier, Porter's Five Forces
 - [x] **`requirements.txt`** — pinned deps (fastapi, uvicorn, pydantic, anthropic, apscheduler, sqlalchemy, httpx, redis)
 
@@ -557,7 +568,10 @@ Goal: a working simulation engine with the Hormuz scenario running inside the Cr
 
 ### Week 3 — Hormuz Port + End-to-End Smoke Test
 
-- [ ] **`forge/theory_mapper.py`** — Maps SimSpec domain + research results → selected theory module IDs
+- [x] **`forge/theory_mapper.py`** — Scores all registered theories against SimSpec domain + description; returns ranked ensemble with rationale
+- [x] **`forge/theory_builder.py`** — Classifies arXiv/SSRN papers for implementable models; generates TheoryBase subclass via Claude; smoke tests; queues in `data/theories/pending/`
+- [x] **`core/theories/discovered/`** — Hot-loadable namespace for approved discovered theories; scanned by `_autodiscover()` at startup
+- [x] **`core/theories/__init__.py`** — `load_theory_file(path)` for runtime hot-loading of approved theories without server restart
 - [ ] **`scenarios/hormuz/`** — Full port from `d:/dev/hormuz-sim-dashboard`:
   - [ ] `params.py` — all 18 agent configs + Richardson parameters
   - [ ] `agents/` — 18 BDI agents (Iran, US, Saudi, shipping actors, etc.)
