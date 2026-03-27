@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #0f1117;
+    color: #e8eaf0;
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #1a1d27; }
+  ::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3d4a; }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-md font-medium text-sm transition-colors cursor-pointer;
+  }
+  .btn-primary {
+    @apply btn bg-accent hover:bg-indigo-500 text-white;
+  }
+  .btn-secondary {
+    @apply btn bg-surface hover:bg-border text-text-primary border border-border;
+  }
+  .btn-danger {
+    @apply btn bg-danger/10 hover:bg-danger/20 text-danger border border-danger/30;
+  }
+  .btn-success {
+    @apply btn bg-success/10 hover:bg-success/20 text-success border border-success/30;
+  }
+  .card {
+    @apply bg-surface border border-border rounded-lg;
+  }
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+  }
+  .badge-indigo { @apply badge bg-indigo-500/15 text-indigo-300; }
+  .badge-green  { @apply badge bg-success/15 text-success; }
+  .badge-yellow { @apply badge bg-warning/15 text-warning; }
+  .badge-red    { @apply badge bg-danger/15 text-danger; }
+  .badge-gray   { @apply badge bg-border text-text-secondary; }
+  .input {
+    @apply w-full bg-bg border border-border rounded-md px-3 py-2 text-sm text-text-primary
+           placeholder:text-text-secondary focus:outline-none focus:border-accent transition-colors;
+  }
+}

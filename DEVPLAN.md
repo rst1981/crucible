@@ -103,6 +103,12 @@ Goal: a consultant types a scenario description and gets a running simulation.
 - [ ] **`/ensembles` — Saved Ensembles page**
   - [ ] List: name, source (user/system), theory count, created date
   - [ ] Fork, delete, load into intake actions
+- [ ] **`/library/pending` — Discovered Theory Review queue**
+  - [ ] List: theory name, source paper, domains, smoke test status (pass/fail), created date
+  - [ ] PendingTheoryDetailModal: generated code viewer, abstract snippet, citation, smoke test output
+  - [ ] Approve button → `POST /forge/theories/pending/{id}/approve` (hot-loads immediately)
+  - [ ] Reject button → `POST /forge/theories/pending/{id}/reject`
+  - [ ] Badge on `/library` nav item showing pending count
 
 ### Week 7 — Ensemble Builder + End-to-End Integration
 
