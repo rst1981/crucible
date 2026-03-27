@@ -486,7 +486,7 @@ class ScopingAgent:
         )[:6000]  # token budget
 
         from core.theories import list_theories
-        available = ", ".join(list_theories().keys())
+        available = ", ".join(list_theories())
 
         prompt = f"""
 Scenario domain: {simspec.domain}
