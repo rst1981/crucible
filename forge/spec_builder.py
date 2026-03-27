@@ -67,12 +67,14 @@ extract any SimSpec updates and return JSON:
   "timeframe_ticks": null_or_integer,
   "domain": null_or_string,
   "actor_updates": [{"actor_id": "...", "name": "...", "role": "..."}],
-  "gap_paths_filled": ["actors", "timeframe"]
+  "metadata_updates": {"outcome_focus": "plain text summary of desired outcomes and decision"},
+  "gap_paths_filled": ["actors", "timeframe", "outcome_focus"]
 }
 
 Rules:
 - All env values must be [0, 1] normalized
 - gap_paths_filled lists field_path strings for gaps this answer resolves
+- If the answer describes desired outcomes or what decision to inform, populate metadata_updates.outcome_focus
 - Return ONLY valid JSON, no markdown fences
 """
 
@@ -188,6 +190,15 @@ class SpecBuilder:
         for actor_data in updates.get("actor_updates") or []:
             _upsert_actor(simspec, actor_data, answer)
             _mark_gap_filled(gaps, "actors", answer)
+
+        # metadata updates (e.g. outcome_focus)
+        metadata_updates: dict = updates.get("metadata_updates") or {}
+        if metadata_updates:
+            meta = dict(simspec.metadata)
+            meta.update(metadata_updates)
+            object.__setattr__(simspec, "metadata", meta)
+            if metadata_updates.get("outcome_focus"):
+                _mark_gap_filled(gaps, "outcome_focus", answer)
 
         # explicit gap_paths_filled
         for path in updates.get("gap_paths_filled") or []:

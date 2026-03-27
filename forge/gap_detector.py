@@ -18,6 +18,19 @@ def detect_gaps(simspec: SimSpec) -> list[SpecGap]:
     """
     gaps: list[SpecGap] = []
 
+    # Outcome focus is always required — research can never fill this.
+    # The consultant must state what decision this simulation should inform
+    # and what outcomes they want to surface.
+    if not simspec.metadata.get("outcome_focus"):
+        gaps.append(SpecGap(
+            field_path="outcome_focus",
+            description=(
+                "What are the 1–3 outcomes this simulation should surface, "
+                "and what specific decision should it inform?"
+            ),
+            priority=0.99,
+        ))
+
     if not simspec.domain:
         gaps.append(SpecGap(
             field_path="domain",
