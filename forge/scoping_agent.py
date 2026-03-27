@@ -271,12 +271,15 @@ class ScopingAgent:
             return await self._run_interview_turn(session, user_message)
         if session.state == ForgeState.THEORY_MAPPING:
             return await self._run_theory_mapping(session)
+        if session.state == ForgeState.ENSEMBLE_REVIEW:
+            # User message during review = they want to proceed or have modified via API
+            return await self._finalize_ensemble(session)
         if session.state == ForgeState.VALIDATION:
             return await self._run_validation(session)
         if session.state == ForgeState.COMPLETE:
             return (
                 f"Simulation '{session.simspec.name}' is ready to run. "
-                f"Use POST /simulations to launch it."
+                f"Use POST /simulations to launch both ensembles."
             )
         return "Processing..."
 
@@ -327,6 +330,12 @@ class ScopingAgent:
 
         elif session.state == ForgeState.DYNAMIC_INTERVIEW:
             reply = await self._run_interview_turn(session, user_message)
+            yield reply
+
+        elif session.state == ForgeState.ENSEMBLE_REVIEW:
+            # User message during review means "proceed with current ensemble"
+            yield "Finalizing ensemble...\n"
+            reply = await self._finalize_ensemble(session)
             yield reply
 
         elif session.state in (ForgeState.THEORY_MAPPING, ForgeState.VALIDATION):
@@ -636,26 +645,92 @@ Rules:
         # Include any theories auto-added to the library during research
         # in the mapper's candidate pool (they're already registered).
         recommendations = self._theory_mapper.recommend_from_spec(session.simspec)
-        theories = [
-            TheoryRef(
-                theory_id=r.theory_id,
-                priority=r.suggested_priority,
-                parameters={},
-            )
+
+        # Store recommendations on session — do NOT commit to simspec.theories yet.
+        # The consultant reviews and optionally edits before finalizing.
+        session.recommended_theories = [
+            {
+                "theory_id":         r.theory_id,
+                "display_name":      r.display_name,
+                "score":             r.score,
+                "rationale":         r.rationale,
+                "suggested_priority": r.suggested_priority,
+                "domains":           r.domains,
+                "source":            r.source,
+            }
             for r in recommendations
         ]
-        object.__setattr__(session.simspec, "theories", theories)
-        session.state = ForgeState.VALIDATION
+        session.state = ForgeState.ENSEMBLE_REVIEW
 
         additions = session.research_context.library_additions
         gaps = session.research_context.library_gaps
         if additions or gaps:
             logger.info(
-                "Theory mapping: %d new theories added to library, %d queued for review. "
-                "Library additions: %s",
-                len(additions), len(gaps), additions,
+                "Theory mapping: %d new theories added to library, %d queued for review.",
+                len(additions), len(gaps),
             )
 
+        return await self._run_ensemble_review(session)
+
+    async def _run_ensemble_review(self, session: ForgeSession) -> str:
+        """
+        Present the recommended ensemble to the consultant and ask whether they
+        want to accept it, modify it, or build a custom ensemble alongside.
+
+        The consultant can:
+          - Accept as-is → calls PUT /forge/intake/{id}/theories/accept
+          - Submit custom list → PUT /forge/intake/{id}/theories/custom
+          - Both run when POST /simulations is called (recommended + custom)
+        """
+        recs = session.recommended_theories
+        if not recs:
+            # No recommendations — go straight to validation with empty theories
+            return await self._finalize_ensemble(session)
+
+        lines = ["**Recommended theory ensemble** (ranked by domain relevance):\n"]
+        for i, r in enumerate(recs):
+            src = " *(new — added to library)*" if r["source"] == "discovered" else ""
+            lines.append(
+                f"{i+1}. **{r['display_name']}**{src} — score {r['score']:.2f}  \n"
+                f"   *{r['rationale']}*"
+            )
+
+        additions = session.research_context.library_additions
+        if additions:
+            lines.append(
+                f"\n*{len(additions)} new theor"
+                f"{'y' if len(additions) == 1 else 'ies'} built from research and added "
+                f"to the library: {', '.join(additions)}.*"
+            )
+
+        lines.append(
+            "\n\nYou can:\n"
+            "- **Accept** this ensemble → `PUT /forge/intake/{session_id}/theories/accept`\n"
+            "- **Customize** → `PUT /forge/intake/{session_id}/theories/custom` "
+            "with `{\"theories\": [{\"theory_id\": \"...\", \"priority\": 0}]}`\n"
+            "- Run **both** for comparison once you launch via `POST /simulations`\n\n"
+            "What would you like to change, or shall I proceed with the recommended ensemble?"
+        )
+        reply = "\n".join(lines)
+        session.add_message(MessageRole.ASSISTANT, reply)
+        return reply
+
+    async def _finalize_ensemble(self, session: ForgeSession) -> str:
+        """
+        Commit the active ensemble (custom if set, else recommended) to simspec.theories
+        and run validation.
+        """
+        active = session.active_theories
+        theories = [
+            TheoryRef(
+                theory_id=t["theory_id"],
+                priority=t.get("suggested_priority", t.get("priority", 0)),
+                parameters=t.get("parameters", {}),
+            )
+            for t in active
+        ]
+        object.__setattr__(session.simspec, "theories", theories)
+        session.state = ForgeState.VALIDATION
         return await self._run_validation(session)
 
     async def _run_validation(self, session: ForgeSession) -> str:

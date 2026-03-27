@@ -9,11 +9,18 @@ Endpoints:
     GET    /forge/intake/{session_id}                      Poll session state
     POST   /forge/intake/{session_id}/message              Stream agent response (SSE)
     DELETE /forge/intake/{session_id}                      Delete session
+    GET    /forge/intake/{session_id}/theories             Recommended ensemble + scores
+    PUT    /forge/intake/{session_id}/theories/accept      Accept recommended ensemble
+    PUT    /forge/intake/{session_id}/theories/custom      Set custom ensemble
     GET    /forge/theories/library                         List all registered theories
     GET    /forge/theories/pending                         List pending theories
     GET    /forge/theories/pending/{id}                    Get pending theory detail
     POST   /forge/theories/pending/{id}/approve            Approve + load theory
     POST   /forge/theories/pending/{id}/reject             Reject theory
+    POST   /simulations                                    Launch recommended + custom runs
+    GET    /simulations                                    List runs
+    GET    /simulations/{sim_id}                           Poll a run
+    GET    /simulations/compare/{sim_id_a}/{sim_id_b}      Compare two runs
     GET    /health                                         Health check
     GET    /                                               API info
 """
@@ -25,6 +32,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routers import forge as forge_router
+from api.routers import simulations as simulations_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,6 +63,7 @@ app.add_middleware(
 # ── Routers ────────────────────────────────────────────────────────────────
 
 app.include_router(forge_router.router)
+app.include_router(simulations_router.router)
 
 # ── System routes ──────────────────────────────────────────────────────────
 
@@ -70,8 +79,12 @@ async def root() -> dict:
         "version": app.version,
         "docs":    "/docs",
         "routes": {
-            "forge_intake":    "POST /forge/intake",
-            "forge_session":   "GET  /forge/intake/{session_id}",
-            "forge_message":   "POST /forge/intake/{session_id}/message",
+            "forge_intake":      "POST /forge/intake",
+            "forge_session":     "GET  /forge/intake/{session_id}",
+            "forge_message":     "POST /forge/intake/{session_id}/message",
+            "forge_theories":    "GET  /forge/intake/{session_id}/theories",
+            "sim_launch":        "POST /simulations",
+            "sim_poll":          "GET  /simulations/{sim_id}",
+            "sim_compare":       "GET  /simulations/compare/{sim_id_a}/{sim_id_b}",
         },
     }

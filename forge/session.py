@@ -24,6 +24,7 @@ class ForgeState(str, Enum):
     PARALLEL_RESEARCH = "parallel_research" # background research fired, awaiting
     DYNAMIC_INTERVIEW = "dynamic_interview" # asking gap-filling questions
     THEORY_MAPPING    = "theory_mapping"    # TheoryMapper selecting modules
+    ENSEMBLE_REVIEW   = "ensemble_review"   # consultant reviewing/editing ensembles
     VALIDATION        = "validation"        # final SimSpec validation pass
     COMPLETE          = "complete"          # SimSpec ready for SimRunner
 
@@ -128,6 +129,10 @@ class ForgeSession:
     completed_at:         float | None      = None
     intake_text:          str               = ""
     domain:               str               = ""
+    # Ensemble review: recommended from TheoryMapper, custom from consultant
+    # recommended_theories: list[TheoryRecommendation] — stored as dicts for JSON safety
+    recommended_theories: list[dict]        = field(default_factory=list)
+    custom_theories:      list[dict] | None = None   # None = not yet customized
 
     def open_gaps(self) -> list[SpecGap]:
         """Return unfilled gaps ordered by priority descending."""
@@ -146,17 +151,24 @@ class ForgeSession:
         self.conversation_history.append(msg)
         return msg
 
+    @property
+    def active_theories(self) -> list[dict]:
+        """The ensemble that will actually run: custom if set, else recommended."""
+        return self.custom_theories if self.custom_theories is not None else self.recommended_theories
+
     def to_dict(self) -> dict[str, Any]:
         return {
-            "session_id":   self.session_id,
-            "state":        self.state.value,
-            "domain":       self.domain,
-            "turn_count":   self.turn_count,
-            "created_at":   self.created_at,
-            "completed_at": self.completed_at,
-            "intake_text":  self.intake_text,
-            "simspec":      self.simspec.model_dump() if self.simspec else None,
-            "gaps":         [g.to_dict() for g in self.gaps],
+            "session_id":            self.session_id,
+            "state":                 self.state.value,
+            "domain":                self.domain,
+            "turn_count":            self.turn_count,
+            "created_at":            self.created_at,
+            "completed_at":          self.completed_at,
+            "intake_text":           self.intake_text,
+            "simspec":               self.simspec.model_dump() if self.simspec else None,
+            "gaps":                  [g.to_dict() for g in self.gaps],
+            "recommended_theories":  self.recommended_theories,
+            "custom_theories":       self.custom_theories,
             "messages": [
                 m.to_dict() for m in self.conversation_history
                 if m.role in (MessageRole.USER, MessageRole.ASSISTANT)

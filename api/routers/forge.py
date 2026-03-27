@@ -1,9 +1,17 @@
 """
 api/routers/forge.py — Intake / Scoping Agent routes
 
-POST /forge/intake                          Create a new scoping session
-GET  /forge/intake/{session_id}             Poll session state + SimSpec progress
-POST /forge/intake/{session_id}/message     Send user message, stream agent response (SSE)
+POST /forge/intake                                   Create a new scoping session
+GET  /forge/intake/{session_id}                      Poll session state + SimSpec progress
+POST /forge/intake/{session_id}/message              Stream agent response (SSE)
+DELETE /forge/intake/{session_id}                    Delete session
+GET  /forge/intake/{session_id}/theories             Recommended ensemble + scores
+PUT  /forge/intake/{session_id}/theories/accept      Accept recommended ensemble as-is
+PUT  /forge/intake/{session_id}/theories/custom      Submit a custom ensemble
+GET  /forge/theories/library                         All registered theories
+GET  /forge/theories/pending                         Pending review queue
+POST /forge/theories/pending/{id}/approve            Approve + hot-load
+POST /forge/theories/pending/{id}/reject             Reject
 """
 from __future__ import annotations
 
@@ -142,6 +150,93 @@ async def delete_session(session_id: str):
     """Delete a scoping session."""
     _get_session(session_id)  # 404 if not found
     del _sessions[session_id]
+
+
+# ── Ensemble review routes ─────────────────────────────────────────────────────
+
+@router.get("/intake/{session_id}/theories")
+async def get_theories(session_id: str) -> dict:
+    """
+    Return the recommended and custom ensembles for a session.
+    Available once the session reaches ensemble_review or complete state.
+    """
+    session = _get_session(session_id)
+    if not session.recommended_theories:
+        raise HTTPException(
+            status_code=409,
+            detail="Recommended ensemble not yet generated. Session must reach ensemble_review state.",
+        )
+    from core.theories import list_theories, get_theory
+    library = set(list_theories())
+    return {
+        "session_id":           session_id,
+        "state":                session.state.value,
+        "recommended":          session.recommended_theories,
+        "custom":               session.custom_theories,
+        "active_ensemble":      "custom" if session.custom_theories is not None else "recommended",
+        "library_size":         len(library),
+        "library_additions":    session.research_context.library_additions,
+    }
+
+
+class CustomEnsembleRequest(BaseModel):
+    theories: list[dict]  # list of {theory_id, priority?, parameters?}
+
+
+@router.put("/intake/{session_id}/theories/accept", status_code=200)
+async def accept_recommended(session_id: str) -> dict:
+    """
+    Accept the recommended ensemble as-is.
+    Clears any custom ensemble and finalizes the session.
+    """
+    session = _get_session(session_id)
+    if not session.recommended_theories:
+        raise HTTPException(status_code=409, detail="No recommended ensemble yet")
+    session.custom_theories = None  # clear any previous custom
+    return {
+        "ensemble_type": "recommended",
+        "theories": session.recommended_theories,
+        "message": "Recommended ensemble accepted. Launch with POST /simulations.",
+    }
+
+
+@router.put("/intake/{session_id}/theories/custom", status_code=200)
+async def set_custom_ensemble(session_id: str, body: CustomEnsembleRequest) -> dict:
+    """
+    Set a custom theory ensemble for this session.
+
+    The consultant provides a list of {theory_id, priority?, parameters?}.
+    All theory_ids must be registered in the library.
+    Both the recommended and custom ensembles will run when POST /simulations is called.
+    """
+    session = _get_session(session_id)
+    from core.theories import list_theories
+    library = set(list_theories())
+
+    unknown = [t["theory_id"] for t in body.theories if t["theory_id"] not in library]
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown theory IDs: {unknown}. Available: {sorted(library)}",
+        )
+
+    session.custom_theories = [
+        {
+            "theory_id":          t["theory_id"],
+            "suggested_priority": t.get("priority", i),
+            "parameters":         t.get("parameters", {}),
+            "source":             "custom",
+        }
+        for i, t in enumerate(body.theories)
+    ]
+    return {
+        "ensemble_type": "custom",
+        "theories":      session.custom_theories,
+        "message": (
+            f"Custom ensemble set ({len(session.custom_theories)} theories). "
+            "Both recommended and custom will run at POST /simulations."
+        ),
+    }
 
 
 # ── Theory library / pending queue routes ──────────────────────────────────────
