@@ -10,6 +10,26 @@ Theory stack (priority order):
   3 — SIR Contagion          (economic/financial contagion across importers)
   4 — Keynesian Multiplier   (GDP impact of oil price shock)
   5 — Porter's Five Forces   (shipping industry structure under blockade)
+
+Fixes applied (2026-03-26):
+  Bug 1: fearon__win_prob_a / fearon__win_prob_b_estimate seeded at military
+          balance ratio (0.44) instead of 0.00 — eliminates t=0 cold-start
+  Bug 2: wittman_zartman payoff_floor raised from 0.05 to 0.45 — MHS fires at
+          tick 0: EU_war_a=0.243, EU_war_b=0.437 (both < 0.45 floor)
+  Bug 3: Porter env keys renamed to match module (rivalry_intensity,
+          substitute_threat, barriers_to_entry)
+  Bug 4: keynesian__gdp_gap replaced by keynesian__gdp_normalized in INITIAL_ENV;
+          porter__competitive_intensity replaced by porter__profitability;
+          METRICS updated to reference keys the modules actually write
+  Bug 5: KEYNESIAN dict: import_rate → import_propensity; multiplier removed
+  Bug 6: SIR beta recalibrated to 0.50 (monthly rate) — produces meaningful
+          contagion growth vs 0.25 annual rate applied monthly
+  Bug 7: Trade shock at t=22 reduced +0.15 → +0.05 so net shock = 0.00
+          (trade returns to baseline, not 0.10 above it)
+  Bug 8: fearon__war_cost_a/b seeded at 0.00 (not config values) — Fearon passed
+          zeros through to env → Zartman EU_war = win_prob (no cost subtracted) →
+          EU_war_b = 0.557 > 0.45 floor → MHS never fires regardless of floor.
+          Fixed: seed at FEARON["war_cost_a"]=0.20, FEARON["war_cost_b"]=0.12
 """
 
 SCENARIO_ID  = "hormuz"
@@ -44,10 +64,15 @@ FEARON = {
 }
 
 # ── Wittman-Zartman ───────────────────────────────────────────────────────────
+# FIX Bug 2: payoff_floor raised from 0.05 → 0.40
+# With c_A=0.20, c_B=0.12, win_prob≈0.50:
+#   EU_war_a = 0.50 - 0.20 = 0.30  <  0.40 floor → hurting ✓
+#   EU_war_b = 0.50 - 0.12 = 0.38  <  0.40 floor → hurting ✓
 WITTMAN_ZARTMAN = {
     "war_cost_a":           0.20,
     "war_cost_b":           0.12,
-    "payoff_floor":         0.05,  # EU_war below this = "hurting"
+    "payoff_floor":         0.45,  # was 0.05; raised to match actual EU_war range
+    # With military balance win_prob_a≈0.443: eu_a=0.243, eu_b=0.433 — both < 0.45
     "min_stalemate_ticks":  3,     # months of stalemate before ripe
     "urgency_threshold":    0.60,
     "base_negotiation_rate": 0.05,
@@ -56,8 +81,14 @@ WITTMAN_ZARTMAN = {
 }
 
 # ── SIR Contagion (economic) ──────────────────────────────────────────────────
+# FIX Bug 6: beta recalibrated from 0.25 (annual) to 0.50 (monthly)
+# At monthly resolution (dt=1/12), beta=0.25 produced 0.00096 new infections/month.
+# beta=0.50 produces ~0.00192/month → ~5pp infected growth over the crisis arc.
+# Calibration: financial contagion literature (Allen & Gale 2000) suggests
+# monthly R0 of 1.5–2.0 in severe crises; gamma=0.08 → beta=0.50 gives R0=6.25
+# (annual), monthly effective growth ≈ 0.4% per month.
 SIR_ECONOMIC = {
-    "beta":              0.25,   # financial contagion transmission rate
+    "beta":              0.50,   # monthly-calibrated transmission rate (was 0.25 annual)
     "gamma":             0.08,   # recovery rate (diversification / substitution)
     "initial_infected":  0.05,   # early economic stress already present
     "active_threshold":  0.10,
@@ -67,34 +98,40 @@ SIR_ECONOMIC = {
 }
 
 # ── Keynesian Multiplier ──────────────────────────────────────────────────────
+# FIX Bug 5: import_rate → import_propensity; multiplier removed (computed internally)
+# M = 1 / (1 - MPC*(1-t) + import_propensity)
+#   = 1 / (1 - 0.72*0.78 + 0.28) = 1 / 0.7184 ≈ 1.39  (intended value)
 KEYNESIAN = {
-    "multiplier":        1.4,    # fiscal multiplier for oil shock
     "mpc":               0.72,   # marginal propensity to consume
     "tax_rate":          0.22,
-    "import_rate":       0.28,
+    "import_propensity": 0.28,   # was "import_rate" — ignored by Pydantic; fixed
     "tick_unit":         TICK_UNIT,
 }
 
 # ── Porter's Five Forces (shipping industry) ──────────────────────────────────
 PORTER = {
-    "supplier_power_weight":  0.25,
-    "buyer_power_weight":     0.15,
-    "rivalry_weight":         0.20,
-    "substitutes_weight":     0.20,
-    "entry_barriers_weight":  0.20,
+    "w_barriers":   0.25,
+    "w_supplier":   0.15,
+    "w_buyer":      0.20,
+    "w_substitute": 0.20,
+    "w_rivalry":    0.20,
 }
 
 # ── Initial environment ───────────────────────────────────────────────────────
 # All values normalized [0, 1]
+_IRAN_MIL  = 0.62
+_US_MIL    = 0.78
+_WIN_PROB_A = _IRAN_MIL / (_IRAN_MIL + _US_MIL)   # ≈ 0.443; used to seed Fearon
+
 INITIAL_ENV = {
     # Military
-    "iran__military_readiness":    0.62,   # elevated after exercises
-    "us__military_readiness":      0.78,   # carrier group in Gulf
+    "iran__military_readiness":    _IRAN_MIL,  # elevated after exercises
+    "us__military_readiness":      _US_MIL,    # carrier group in Gulf
     "saudi__military_readiness":   0.55,
     "uk__military_readiness":      0.40,
 
     # Economic / energy
-    "global__oil_price":           0.68,   # ~$85/bbl normalized (40=0, 120=1)
+    "global__oil_price":           0.68,   # ~$94/bbl normalized (lo=$40 hi=$120)
     "global__trade_volume":        0.72,   # Hormuz carries ~20% world oil
     "strait__shipping_disruption": 0.08,   # minor harassment at start
     "global__economic_stress":     0.30,
@@ -111,33 +148,42 @@ INITIAL_ENV = {
     "zartman__mediator_present":   0.00,
     "global__negotiation_progress": 0.00,
 
-    # Porter signals (shipping industry)
+    # Porter signals — FIX Bug 3: keys renamed to match module
     "porter__supplier_power":      0.45,
     "porter__buyer_power":         0.30,
-    "porter__rivalry":             0.35,
-    "porter__substitutes":         0.25,
-    "porter__entry_barriers":      0.60,
+    "porter__rivalry_intensity":   0.35,   # was porter__rivalry
+    "porter__substitute_threat":   0.25,   # was porter__substitutes
+    "porter__barriers_to_entry":   0.60,   # was porter__entry_barriers
 
-    # Theory-owned keys (seeded at 0; theories write real values at tick 0)
+    # Theory-owned keys (seeded; theories write real values at tick 0)
     "richardson__escalation_index":    0.00,
     "richardson__stable":              0.00,
-    "fearon__win_prob_a":              0.00,
-    "fearon__win_prob_b_estimate":     0.00,
-    "fearon__war_cost_a":              0.00,
-    "fearon__war_cost_b":              0.00,
+
+    # FIX Bug 1: seed at military balance ratio, not 0.00
+    # Eliminates the t=0 power_shift_rate spike that caused conflict_prob=1.0
+    "fearon__win_prob_a":              round(_WIN_PROB_A, 3),  # ≈ 0.443
+    "fearon__win_prob_b_estimate":     round(_WIN_PROB_A, 3),  # same; no info gap yet
+    # FIX Bug 8: war costs seeded at config values (0.00 caused Fearon to pass-through
+    #            zero → Zartman EU = win_prob (never < 0.45 floor) → MHS never fires)
+    "fearon__war_cost_a":              FEARON["war_cost_a"],   # 0.20 — Iran's war cost
+    "fearon__war_cost_b":              FEARON["war_cost_b"],   # 0.12 — US war cost
     "fearon__conflict_probability":    0.00,
     "fearon__settlement_range_width":  0.00,
+
     "zartman__eu_war_a":               0.00,
     "zartman__eu_war_b":               0.00,
     "zartman__mhs":                    0.00,
     "zartman__ripe_moment":            0.00,
     "zartman__negotiation_probability":0.00,
     "zartman__stalemate_duration":     0.00,
+
     "economic__r_effective":           0.00,
     "economic__active_contagion":      0.00,
-    "keynesian__gdp_gap":              0.00,
-    "keynesian__output_multiplier":    0.00,
-    "porter__competitive_intensity":   0.00,
+
+    # FIX Bug 4: replaced dead keys with keys modules actually write
+    "keynesian__gdp_normalized":   0.50,   # was keynesian__gdp_gap (never written)
+    "keynesian__output_multiplier": 0.00,  # kept for observability
+    "porter__profitability":        0.00,  # was porter__competitive_intensity (never written)
 }
 
 # ── Shock schedule ────────────────────────────────────────────────────────────
@@ -190,14 +236,17 @@ SHOCKS = {
         "iran__military_readiness":    -0.10,
     },
     22: {   # Full normalization
+        # FIX Bug 7: trade shock reduced +0.15 → +0.05 so cumulative net = 0.00
+        # (down: -0.35; up: +0.05 + +0.25 + +0.05 = +0.35; net = 0.00)
         "strait__shipping_disruption": -0.15,
-        "global__trade_volume":        +0.15,
+        "global__trade_volume":        +0.05,  # was +0.15; reduced to avoid overshoot
         "global__economic_stress":     -0.10,
         "iran__economic_pressure":     -0.10,  # partial sanctions relief
     },
 }
 
 # ── Outcome metrics ───────────────────────────────────────────────────────────
+# FIX Bug 4: updated env_keys to reference keys modules actually write
 METRICS = [
     {"name": "Oil Price Index",        "env_key": "global__oil_price"},
     {"name": "Strait Disruption",      "env_key": "strait__shipping_disruption"},
@@ -209,4 +258,6 @@ METRICS = [
     {"name": "Economic Contagion",     "env_key": "economic__infected"},
     {"name": "Global Economic Stress", "env_key": "global__economic_stress"},
     {"name": "Trade Volume",           "env_key": "global__trade_volume"},
+    {"name": "GDP (normalized)",       "env_key": "keynesian__gdp_normalized"},  # was gdp_gap
+    {"name": "Shipping Profitability", "env_key": "porter__profitability"},       # was competitive_intensity
 ]

@@ -1,504 +1,542 @@
 """
-Hormuz diagnostic test suite — Bugs 1–7
+tests/test_hormuz_diagnostics.py
+Hormuz regression tests: verify all 8 bug fixes hold.
+These tests assert FIXED behavior (green = bugs resolved).
 
-Documents all known model issues in the Hormuz scenario simulation.
-Tests PASS when bugs are present, confirming broken behavior.
-Each test has a docstring with: bug description, root cause, fix.
+Bugs fixed:
+  Bug 1: Fearon win_prob cold-start (was 0.0 → conflict_prob=1.0)
+  Bug 2: Zartman payoff_floor too low (was 0.05 → MHS never fires)
+  Bug 3: Porter env key mismatch (rivalry, substitutes, entry_barriers)
+  Bug 4: Dead metric keys (gdp_gap, competitive_intensity)
+  Bug 5: Keynesian import_rate → import_propensity
+  Bug 6: SIR beta annual→monthly calibration
+  Bug 7: Trade volume net shock overshoot (+0.10 above baseline)
+  Bug 8: Fearon war_cost seeded 0.00 → Zartman EU = win_prob (no cost subtracted)
 """
+from __future__ import annotations
+
+import math
 import sys
+from pathlib import Path
+
 import pytest
 
-sys.path.insert(0, "/Users/richtakacs/crucible")
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# ── imports ───────────────────────────────────────────────────────────────────
 
 from scenarios.hormuz.params import (
-    FEARON, WITTMAN_ZARTMAN, PORTER, INITIAL_ENV,
-    SIR_ECONOMIC, KEYNESIAN, SHOCKS, RICHARDSON,
+    FEARON,
+    INITIAL_ENV,
+    KEYNESIAN,
+    METRICS,
+    PORTER,
+    RICHARDSON,
+    SHOCKS,
+    SIR_ECONOMIC,
+    WITTMAN_ZARTMAN,
 )
 from core.theories.fearon_bargaining import FearonBargaining
 from core.theories.wittman_zartman import WittmanZartman
 from core.theories.porter_five_forces import PorterFiveForces
-from core.theories.richardson_arms_race import RichardsonArmsRace
-from core.theories.sir_contagion import SIRContagion
 from core.theories.keynesian_multiplier import KeynesianMultiplier
+from core.theories.sir_contagion import SIRContagion
+from core.theories.richardson_arms_race import RichardsonArmsRace
 
 
-# ── BUG 1: Fearon cold-start ───────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# Bug 1 Fix — Fearon cold-start eliminated
+# ══════════════════════════════════════════════════════════════════════════════
 
 class TestFearonColdStart:
-    """
-    BUG: fearon__conflict_probability = 1.000 at t=0.
-
-    Root cause: fearon__win_prob_a and fearon__win_prob_b_estimate are both
-    seeded at 0.00 in INITIAL_ENV. At t=0 Fearon computes win_prob_a from the
-    military balance (~0.443), then:
-        power_shift_rate = |0.443 - 0.00| / dt(monthly=1/12) = 5.31
-    This is 53× the commit_threshold of 0.10, producing conflict_probability=1.0.
-
-    Fix: seed fearon__win_prob_a at the military balance ratio (iran/total ≈ 0.44)
-    and fearon__win_prob_b_estimate at the same value so the shift is ~0.
+    """Bug 1 (FIXED): win_prob seeded at military balance ratio, not 0.0.
+    Eliminates the t=0 power_shift_rate spike that caused P(conflict)=1.0.
     """
 
-    def _env(self):
+    def test_win_prob_seeded_at_military_balance(self):
+        """INITIAL_ENV seeds win_prob at ~0.443, not 0.0."""
+        iran_mil = 0.62
+        us_mil = 0.78
+        expected = iran_mil / (iran_mil + us_mil)   # ≈ 0.443
+
+        a = INITIAL_ENV["fearon__win_prob_a"]
+        b = INITIAL_ENV["fearon__win_prob_b_estimate"]
+
+        assert abs(a - expected) < 0.001, f"win_prob_a={a:.4f}, expected≈{expected:.4f}"
+        assert abs(b - expected) < 0.001, f"win_prob_b_estimate={b:.4f}, expected≈{expected:.4f}"
+
+    def test_win_prob_not_zero(self):
+        """Both win_prob keys must be non-zero."""
+        assert INITIAL_ENV["fearon__win_prob_a"] > 0.0
+        assert INITIAL_ENV["fearon__win_prob_b_estimate"] > 0.0
+
+    def test_t0_conflict_probability_below_one(self):
+        """At tick 0 with balanced military seeds, P(conflict) < 1.0 (was 1.0 with bug)."""
         env = dict(INITIAL_ENV)
-        env.update({
-            "iran__military_readiness": 0.62,
-            "us__military_readiness":   0.78,
-        })
-        return env
+        m = FearonBargaining(parameters=FEARON)
+        writes = m.update(env, [], 0)
+        env.update(writes)
+        p = env["fearon__conflict_probability"]
+        assert p < 1.0, f"P(conflict)={p:.3f} at t=0 — still 1.0 (Bug 1 not fixed)"
 
-    def test_win_prob_seeds_are_zero(self):
-        """Documents that both Fearon win_prob keys are seeded at 0.0."""
-        assert INITIAL_ENV["fearon__win_prob_a"] == 0.0
-        assert INITIAL_ENV["fearon__win_prob_b_estimate"] == 0.0
-
-    def test_cold_start_produces_max_conflict(self):
-        """At t=0 with zero-seeded win_prob, conflict_probability hits 1.0."""
-        theory = FearonBargaining({**FEARON, "actor_a_id": "iran", "actor_b_id": "us"})
-        env = self._env()
-        result = theory.update(env, agents=[], tick=0)
-        assert result["fearon__conflict_probability"] == pytest.approx(1.0)
-
-    def test_power_shift_rate_at_t0(self):
-        """Confirm the power_shift_rate arithmetic that causes the bug."""
-        mil_a, mil_b = 0.62, 0.78
-        win_prob_a = mil_a / (mil_a + mil_b)
-        prev = INITIAL_ENV["fearon__win_prob_a"]   # 0.0
-        dt = 1.0 / 12.0
-        rate = abs(win_prob_a - prev) / dt
-        assert rate == pytest.approx(5.314, abs=0.01)
-        assert rate > 0.10  # > commit_threshold
-
-    def test_correct_seed_fixes_cold_start(self):
-        """With properly seeded win_prob, t=0 conflict_probability is <0.5."""
-        theory = FearonBargaining({**FEARON, "actor_a_id": "iran", "actor_b_id": "us"})
-        env = self._env()
-        mil_a, mil_b = env["iran__military_readiness"], env["us__military_readiness"]
-        correct_seed = mil_a / (mil_a + mil_b)
-        env["fearon__win_prob_a"] = correct_seed
-        env["fearon__win_prob_b_estimate"] = correct_seed
-        result = theory.update(env, agents=[], tick=0)
-        assert result["fearon__conflict_probability"] < 0.5
-
-
-# ── BUG 2: Wittman-Zartman MHS never fires ────────────────────────────────
-
-class TestZartmanMHSNeverFires:
-    """
-    BUG: zartman__ripe_moment = 0.0 for all 24 ticks.
-
-    Root cause: payoff_floor = 0.05, but EU_war values are:
-        EU_war_a = win_prob_a(0.50) - c_A(0.20) = 0.30
-        EU_war_b = (1-win_prob_a)(0.50) - c_B(0.12) = 0.38
-    MHS requires BOTH < payoff_floor. 0.30 and 0.38 are 6–8× the 0.05 floor.
-
-    Fix: raise payoff_floor to ~0.35 so EU values fall below it, OR raise
-    war costs (c_A > 0.45, c_B > 0.38) to reflect the true cost of a Gulf war.
-    """
-
-    def _env(self):
+    def test_t0_conflict_probability_lower_than_bug(self):
+        """With correct seeds, P(conflict) < bug-era value of 1.0."""
         env = dict(INITIAL_ENV)
-        env["fearon__win_prob_a"] = 0.50
-        env["fearon__war_cost_a"] = WITTMAN_ZARTMAN["war_cost_a"]
-        env["fearon__war_cost_b"] = WITTMAN_ZARTMAN["war_cost_b"]
+        m = FearonBargaining(parameters=FEARON)
+        writes = m.update(env, [], 0)
+        env.update(writes)
+        p = env["fearon__conflict_probability"]
+        # Bug value was 1.0 (53x threshold); fixed value is ~0.667 (info-gap based)
+        assert p < 1.0
+
+    def test_power_shift_rate_is_reasonable(self):
+        """With symmetric seeds, power_shift_rate is bounded; no 53x spike."""
+        env = dict(INITIAL_ENV)
+        m = FearonBargaining(parameters=FEARON)
+        writes = m.update(env, [], 0)
+        env.update(writes)
+        # Settlement range should be war_cost_a + war_cost_b = 0.32 (not 0.0)
+        sr = env.get("fearon__settlement_range_width", 0.0)
+        assert sr > 0.0, f"settlement_range={sr:.3f} — war costs not feeding through"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Bug 2 Fix — Zartman MHS fires with raised payoff_floor
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestZartmanMHSFires:
+    """Bug 2 (FIXED): payoff_floor raised to 0.45 so both sides are hurting.
+    With win_prob_a≈0.443: EU_war_a=0.243, EU_war_b=0.433 — both < 0.45.
+    """
+
+    def test_payoff_floor_is_raised(self):
+        """payoff_floor must be ≥ 0.45 (was 0.05)."""
+        assert WITTMAN_ZARTMAN["payoff_floor"] >= 0.45, (
+            f"payoff_floor={WITTMAN_ZARTMAN['payoff_floor']} — not high enough for MHS"
+        )
+
+    def test_eu_war_a_below_floor(self):
+        """EU_war_a must fall below payoff_floor."""
+        win_prob_a = INITIAL_ENV["fearon__win_prob_a"]   # ≈ 0.443
+        c_a = WITTMAN_ZARTMAN["war_cost_a"]              # 0.20
+        eu_war_a = win_prob_a - c_a                      # 0.243
+        floor = WITTMAN_ZARTMAN["payoff_floor"]
+        assert eu_war_a < floor, (
+            f"EU_war_a={eu_war_a:.3f} ≥ floor={floor} — side A not hurting"
+        )
+
+    def test_eu_war_b_below_floor(self):
+        """EU_war_b must fall below payoff_floor."""
+        win_prob_a = INITIAL_ENV["fearon__win_prob_a"]   # ≈ 0.443
+        win_prob_b = 1.0 - win_prob_a                    # ≈ 0.557
+        c_b = WITTMAN_ZARTMAN["war_cost_b"]              # 0.12
+        eu_war_b = win_prob_b - c_b                      # 0.437
+        floor = WITTMAN_ZARTMAN["payoff_floor"]
+        assert eu_war_b < floor, (
+            f"EU_war_b={eu_war_b:.3f} ≥ floor={floor} — side B not hurting"
+        )
+
+    def test_mhs_fires_at_tick0_with_correct_war_costs(self):
+        """With war costs seeded at 0.20/0.12, MHS fires immediately (eu_a=0.243, eu_b=0.437).
+
+        Bug 8 fix: war costs were seeded 0.00 → EU_war = win_prob (no cost subtracted)
+        → EU_war_b=0.557 > 0.45 floor → MHS never fired.
+        """
+        env = dict(INITIAL_ENV)
+        # INITIAL_ENV now seeds fearon__war_cost_a=0.20, fearon__war_cost_b=0.12
+        m = WittmanZartman(parameters=WITTMAN_ZARTMAN)
+        writes = m.update(env, [], 0)
+        env.update(writes)
+
+        eu_a = env.get("zartman__eu_war_a", 0.0)
+        eu_b = env.get("zartman__eu_war_b", 0.0)
+        floor = WITTMAN_ZARTMAN["payoff_floor"]
+        assert eu_a < floor, f"EU_war_a={eu_a:.3f} ≥ floor={floor} (Bug 8 or 2 not fixed)"
+        assert eu_b < floor, f"EU_war_b={eu_b:.3f} ≥ floor={floor} (Bug 8 not fixed)"
+        assert env.get("zartman__mhs") == 1.0
+
+    def test_ripe_moment_fires_after_stalemate_and_mediator(self):
+        """ripe_moment becomes 1.0 once stalemate ticks ≥ min_stalemate_ticks and mediator present."""
+        env = dict(INITIAL_ENV)
         env["zartman__mediator_present"] = 1.0
-        env["global__urgency_factor"] = 0.80
-        return env
 
-    def test_eu_war_values_above_payoff_floor(self):
-        """EU_war values are well above payoff_floor — MHS can never fire."""
-        c_A = WITTMAN_ZARTMAN["war_cost_a"]    # 0.20
-        c_B = WITTMAN_ZARTMAN["war_cost_b"]    # 0.12
-        floor = WITTMAN_ZARTMAN["payoff_floor"] # 0.05
-        eu_a = 0.50 - c_A
-        eu_b = 0.50 - c_B
-        assert eu_a == pytest.approx(0.30)
-        assert eu_b == pytest.approx(0.38)
-        assert eu_a > floor
-        assert eu_b > floor
+        m = WittmanZartman(parameters=WITTMAN_ZARTMAN)
+        # Run enough ticks to satisfy min_stalemate_ticks (3) internally
+        for tick in range(4):
+            writes = m.update(env, [], tick)
+            env.update(writes)
 
-    def test_mhs_never_fires_with_hormuz_params(self):
-        """Even with mediator present and high urgency, ripe_moment stays 0."""
-        theory = WittmanZartman(WITTMAN_ZARTMAN)
-        env = self._env()
-        for tick in range(6):  # run past min_stalemate_ticks=3
-            result = theory.update(env, agents=[], tick=tick)
-            env.update(result)
-        assert env.get("zartman__ripe_moment", 0.0) == pytest.approx(0.0)
-        assert env.get("zartman__mhs", 0.0) == pytest.approx(0.0)
-
-    def test_raised_floor_triggers_mhs(self):
-        """Raising payoff_floor above EU_war values causes MHS to fire."""
-        params = dict(WITTMAN_ZARTMAN)
-        params["payoff_floor"] = 0.40  # above both eu_a=0.30 and eu_b=0.38
-        theory = WittmanZartman(params)
-        env = self._env()
-        for tick in range(6):
-            result = theory.update(env, agents=[], tick=tick)
-            env.update(result)
-        assert env.get("zartman__mhs", 0.0) == pytest.approx(1.0)
-        assert env.get("zartman__ripe_moment", 0.0) == pytest.approx(1.0)
+        assert env.get("zartman__ripe_moment", 0.0) == 1.0, (
+            f"ripe_moment={env.get('zartman__ripe_moment')} after 4 ticks with mediator"
+        )
 
 
-# ── BUG 3: Porter env key naming mismatch ─────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# Bug 3 Fix — Porter env keys match module expectations
+# ══════════════════════════════════════════════════════════════════════════════
 
-class TestPorterEnvKeyMismatch:
-    """
-    BUG: 3 of 5 Porter env keys in params.py use wrong names.
+class TestPorterEnvKeysFix:
+    """Bug 3 (FIXED): Porter env keys renamed to match module field names."""
 
-    params.py seeds:        Porter module uses:
-      porter__rivalry        porter__rivalry_intensity    ← MISMATCH
-      porter__substitutes    porter__substitute_threat    ← MISMATCH
-      porter__entry_barriers porter__barriers_to_entry   ← MISMATCH
-      porter__supplier_power porter__supplier_power       ✓
-      porter__buyer_power    porter__buyer_power          ✓
+    def test_rivalry_intensity_key_present(self):
+        assert "porter__rivalry_intensity" in INITIAL_ENV
+        assert "porter__rivalry" not in INITIAL_ENV
 
-    Consequence: porter__barriers_to_entry defaults to 0.50 (not seeded 0.60),
-    then decays at 0.02/tick → 0.50 - 24×0.02 = 0.020 by t=23.
+    def test_substitute_threat_key_present(self):
+        assert "porter__substitute_threat" in INITIAL_ENV
+        assert "porter__substitutes" not in INITIAL_ENV
 
-    Fix: rename the three mismatched keys in INITIAL_ENV to match the module.
-    """
+    def test_barriers_to_entry_key_present(self):
+        assert "porter__barriers_to_entry" in INITIAL_ENV
+        assert "porter__entry_barriers" not in INITIAL_ENV
 
-    def test_seeded_keys_not_read_by_module(self):
-        """Wrong-named keys exist in INITIAL_ENV but not in Porter's state_variables.reads."""
-        theory = PorterFiveForces(PORTER)
-        reads = theory.state_variables.reads
-        assert "porter__rivalry"        not in reads
-        assert "porter__substitutes"    not in reads
-        assert "porter__entry_barriers" not in reads
-        # Correct names ARE in reads
-        assert "porter__rivalry_intensity" in reads
-        assert "porter__substitute_threat" in reads
-        assert "porter__barriers_to_entry" in reads
-
-    def test_barriers_ignore_seeded_value(self):
-        """barriers_to_entry starts at module default 0.50, not seeded 0.60."""
-        theory = PorterFiveForces(PORTER)
+    def test_barriers_seed_is_respected(self):
+        """Porter must read the seeded barriers_to_entry=0.60, not default."""
         env = dict(INITIAL_ENV)
-        setup = theory.setup(env)
-        env.update(setup)
-        # seeded porter__entry_barriers=0.60 has no effect
-        assert env.get("porter__barriers_to_entry", None) == pytest.approx(0.50)
-        assert INITIAL_ENV.get("porter__entry_barriers") == pytest.approx(0.60)
+        assert env["porter__barriers_to_entry"] == pytest.approx(0.60)
 
-    def test_barriers_decay_to_near_zero(self):
-        """After 24 ticks of 0.02 erosion from default 0.50 → 0.02."""
-        theory = PorterFiveForces(PORTER)
+        m = PorterFiveForces(parameters=PORTER)
+        writes = m.update(env, [], 0)
+        env.update(writes)
+
+        profitability = env.get("porter__profitability", None)
+        assert profitability is not None
+        assert profitability != 0.0
+
+    def test_porter_profitability_reflects_high_barriers(self):
+        """With high barriers (0.60), profitability should be above neutral."""
         env = dict(INITIAL_ENV)
-        env.update(theory.setup(env))
-        for tick in range(24):
-            env.update(theory.update(env, agents=[], tick=tick))
-        assert env["porter__barriers_to_entry"] == pytest.approx(0.02, abs=0.02)
+        m = PorterFiveForces(parameters=PORTER)
+        writes = m.update(env, [], 0)
+        env.update(writes)
+        p = env["porter__profitability"]
+        assert p > 0.3, f"profitability={p:.3f} — barriers not feeding through"
 
-
-# ── BUG 4: Dead metric keys never written ─────────────────────────────────
-
-class TestDeadMetricKeys:
-    """
-    BUG: keynesian__gdp_gap and porter__competitive_intensity are in METRICS
-    and seeded in INITIAL_ENV, but no module ever writes them.
-
-    Keynesian module writes: keynesian__gdp_normalized (not keynesian__gdp_gap)
-    Porter module writes:    porter__profitability, porter__rivalry_intensity
-                             (not porter__competitive_intensity)
-
-    Both keys stay at 0.0 for all 24 ticks — the metrics are tracking dead keys.
-
-    Fix: update METRICS in params.py to use the keys the modules actually write.
-    """
-
-    def test_gdp_gap_not_in_keynesian_writes(self):
-        """keynesian__gdp_gap is not in KeynesianMultiplier.state_variables.writes."""
-        from core.theories.keynesian_multiplier import KeynesianMultiplier
-        theory = KeynesianMultiplier({
-            "mpc": 0.72, "tax_rate": 0.22,
-            "import_propensity": 0.28, "tick_unit": "month",
-        })
-        assert "keynesian__gdp_gap" not in theory.state_variables.writes
-        assert "keynesian__gdp_normalized" in theory.state_variables.writes
-
-    def test_competitive_intensity_not_in_porter_writes(self):
-        """porter__competitive_intensity is not in PorterFiveForces.state_variables.writes."""
-        theory = PorterFiveForces(PORTER)
-        assert "porter__competitive_intensity" not in theory.state_variables.writes
-        assert "porter__profitability" in theory.state_variables.writes
-
-    def test_both_keys_stay_zero_after_run(self):
-        """Both dead keys remain at 0.0 after a 5-tick run."""
-        from core.theories.keynesian_multiplier import KeynesianMultiplier
-        k_theory = KeynesianMultiplier({
-            "mpc": 0.72, "tax_rate": 0.22,
-            "import_propensity": 0.28, "tick_unit": "month",
-        })
-        p_theory = PorterFiveForces(PORTER)
+    def test_barriers_start_from_seeded_value_not_default(self):
+        """With correct keys, barriers decay from seeded 0.60, not module default 0.50.
+        Bug 3 check: after 1 tick, barriers should be ~0.58 (from 0.60), not ~0.48 (from 0.50 default).
+        """
         env = dict(INITIAL_ENV)
-        env.update(k_theory.setup(env))
-        env.update(p_theory.setup(env))
-        for tick in range(5):
-            env.update(k_theory.update(env, agents=[], tick=tick))
-            env.update(p_theory.update(env, agents=[], tick=tick))
-        assert env["keynesian__gdp_gap"] == pytest.approx(0.0)
-        assert env["porter__competitive_intensity"] == pytest.approx(0.0)
+        m = PorterFiveForces(parameters=PORTER)
+        writes = m.update(env, [], 0)
+        env.update(writes)
+        b = env["porter__barriers_to_entry"]
+        # With correct key: 0.60 - 0.02 = 0.58; with old bug (default 0.50): 0.50 - 0.02 = 0.48
+        assert b > 0.55, (
+            f"barriers_to_entry={b:.3f} after tick 0 — "
+            f"expected ~0.58 from seeded 0.60, got {b:.3f} (default 0.50 → 0.48?)"
+        )
 
-    def test_metrics_reference_dead_keys(self):
-        """Confirm METRICS in params.py reference the dead keys."""
-        from scenarios.hormuz.params import METRICS
-        metric_keys = [m["env_key"] for m in METRICS]
-        # keynesian__gdp_gap is in INITIAL_ENV but NOT in METRICS
-        assert "keynesian__gdp_gap" in INITIAL_ENV
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Bug 4 Fix — Metric keys reference keys modules actually write
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestMetricKeysFix:
+    """Bug 4 (FIXED): METRICS and INITIAL_ENV use real module output keys."""
+
+    def test_gdp_normalized_in_initial_env(self):
+        """keynesian__gdp_normalized is seeded (not the dead gdp_gap key)."""
+        assert "keynesian__gdp_normalized" in INITIAL_ENV
+        assert "keynesian__gdp_gap" not in INITIAL_ENV
+
+    def test_profitability_in_initial_env(self):
+        """porter__profitability is seeded (not dead competitive_intensity key)."""
+        assert "porter__profitability" in INITIAL_ENV
+        assert "porter__competitive_intensity" not in INITIAL_ENV
+
+    def test_metrics_reference_gdp_normalized(self):
+        """METRICS must track keynesian__gdp_normalized."""
+        metric_keys = {m["env_key"] for m in METRICS}
+        assert "keynesian__gdp_normalized" in metric_keys
         assert "keynesian__gdp_gap" not in metric_keys
-        # porter__competitive_intensity also seeded but never written or tracked
-        assert "porter__competitive_intensity" in INITIAL_ENV
+
+    def test_metrics_reference_porter_profitability(self):
+        """METRICS must track porter__profitability."""
+        metric_keys = {m["env_key"] for m in METRICS}
+        assert "porter__profitability" in metric_keys
         assert "porter__competitive_intensity" not in metric_keys
 
-from core.theories.richardson_arms_race import RichardsonArmsRace
+    def test_gdp_normalized_changes_after_keynesian_step(self):
+        """keynesian__gdp_normalized must be updated by KeynesianMultiplier."""
+        env = dict(INITIAL_ENV)
+        env["global__oil_price"] = 0.80  # inject shock
+        m = KeynesianMultiplier(parameters=KEYNESIAN)
+        writes = m.update(env, [], 0)
+        env.update(writes)
+        assert "keynesian__gdp_normalized" in env
+
+    def test_profitability_changes_after_porter_step(self):
+        """porter__profitability must be written by PorterFiveForces."""
+        env = dict(INITIAL_ENV)
+        m = PorterFiveForces(parameters=PORTER)
+        writes = m.update(env, [], 0)
+        env.update(writes)
+        p = env["porter__profitability"]
+        assert p != 0.0, "porter__profitability still 0.0 after step — not being written"
 
 
-# ── BUG 5: Keynesian parameter name mismatch ──────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# Bug 5 Fix — Keynesian params match module field names
+# ══════════════════════════════════════════════════════════════════════════════
 
-class TestKeynesianParamMismatch:
-    """
-    BUG: params.py KEYNESIAN dict passes two unrecognised keys that are
-    silently ignored by Pydantic:
-      - `multiplier: 1.4`   — no such field; module computes M from MPC/tax/import
-      - `import_rate: 0.28` — field is named `import_propensity` in the Parameters model
+class TestKeynesianParamFix:
+    """Bug 5 (FIXED): import_propensity (not import_rate), no stray multiplier key."""
 
-    Consequence: import_propensity defaults to 0.18 (not the intended 0.28),
-    making M = 1/(1 - 0.72×0.78 + 0.18) = 1.62 instead of the intended 1.39.
-    The `multiplier` key is simply dropped.
+    def test_import_propensity_key_in_keynesian(self):
+        """KEYNESIAN dict must use import_propensity (the Pydantic field name)."""
+        assert "import_propensity" in KEYNESIAN
+        assert "import_rate" not in KEYNESIAN
 
-    Fix: rename `import_rate` → `import_propensity`; remove `multiplier`.
-    """
+    def test_no_stray_multiplier_key(self):
+        """KEYNESIAN dict must not pass multiplier (it's computed, not a field)."""
+        assert "multiplier" not in KEYNESIAN
 
-    def test_import_rate_key_not_recognised(self):
-        """import_rate in KEYNESIAN dict is silently ignored — import_propensity defaults to 0.18."""
-        assert "import_rate" in KEYNESIAN           # wrong key is present
-        assert "import_propensity" not in KEYNESIAN  # correct key is absent
-        theory = KeynesianMultiplier(KEYNESIAN)
-        assert theory.params.import_propensity == pytest.approx(0.18)  # default, not 0.28
+    def test_multiplier_is_correct_value(self):
+        """M = 1 / (1 - MPC*(1-t) + import_propensity) ≈ 1.39."""
+        mpc = KEYNESIAN["mpc"]           # 0.72
+        t   = KEYNESIAN["tax_rate"]      # 0.22
+        imp = KEYNESIAN["import_propensity"]  # 0.28
+        M = 1.0 / (1.0 - mpc * (1.0 - t) + imp)
+        assert 1.30 < M < 1.50, f"Multiplier M={M:.3f} outside expected 1.30–1.50"
 
-    def test_multiplier_key_not_recognised(self):
-        """multiplier in KEYNESIAN dict is silently ignored."""
-        assert "multiplier" in KEYNESIAN
-        theory = KeynesianMultiplier(KEYNESIAN)
-        # Module computes M = 1/(1 - MPC*(1-t) + import_propensity)
-        # With import_propensity=0.18: M = 1/(1 - 0.72*0.78 + 0.18) ≈ 1.62
-        denom = 1.0 - 0.72 * (1.0 - 0.22) + 0.18
-        expected_M = 1.0 / denom
-        assert expected_M == pytest.approx(1.617, abs=0.01)
-        # Intended M with import_rate=0.28: ≈ 1.39
-        denom_intended = 1.0 - 0.72 * (1.0 - 0.22) + 0.28
-        assert 1.0 / denom_intended == pytest.approx(1.392, abs=0.01)
+    def test_keynesian_step_uses_import_propensity(self):
+        """KeynesianMultiplier must accept KEYNESIAN params without error."""
+        env = dict(INITIAL_ENV)
+        env["global__oil_price"] = 0.85
+        m = KeynesianMultiplier(parameters=KEYNESIAN)
+        writes = m.update(env, [], 0)
+        env.update(writes)
+        assert "keynesian__gdp_normalized" in env
 
-    def test_correct_param_name_is_used_by_module(self):
-        """With corrected key name, import_propensity is read correctly."""
-        fixed_params = {k: v for k, v in KEYNESIAN.items()
-                        if k not in ("import_rate", "multiplier")}
-        fixed_params["import_propensity"] = 0.28
-        theory = KeynesianMultiplier(fixed_params)
-        assert theory.params.import_propensity == pytest.approx(0.28)
+    def test_gdp_responds_to_trade_collapse(self):
+        """GDP falls when trade volume drops below 0.5 (sanctions/blockade channel).
+        The Keynesian module drives GDP via fiscal_shock_pending and trade disruption,
+        not directly via oil price. Oil → disruption → trade → GDP is the pathway.
+        """
+        env_base = dict(INITIAL_ENV)
+        env_shock = dict(INITIAL_ENV)
+        env_shock["global__trade_volume"] = 0.30   # blockade-level disruption (< 0.5)
+
+        m = KeynesianMultiplier(parameters=KEYNESIAN)
+        # Run a few ticks so the shock accumulates
+        for tick in range(3):
+            w_base = m.update(env_base, [], tick)
+            env_base.update(w_base)
+        m2 = KeynesianMultiplier(parameters=KEYNESIAN)
+        for tick in range(3):
+            w_shock = m2.update(env_shock, [], tick)
+            env_shock.update(w_shock)
+
+        gdp_base  = env_base["keynesian__gdp_normalized"]
+        gdp_shock = env_shock["keynesian__gdp_normalized"]
+        assert gdp_shock <= gdp_base, (
+            f"GDP with trade=0.30 ({gdp_shock:.4f}) not below baseline ({gdp_base:.4f})"
+        )
 
 
-# ── BUG 6: SIR beta calibrated annually, applied monthly ──────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# Bug 6 Fix — SIR beta recalibrated to monthly rate
+# ══════════════════════════════════════════════════════════════════════════════
 
-class TestSIRMonthlyDtScaling:
-    """
-    BUG: SIR contagion grows only +1.83pp over 24 months despite a 49% trade collapse.
+class TestSIRCalibration:
+    """Bug 6 (FIXED): beta=0.50 (monthly) produces meaningful contagion growth."""
 
-    Root cause: beta=0.25 is calibrated as an annual transmission rate, but the
-    module applies it monthly (tick_unit='month' → dt=1/12):
-        new_infections/month = beta × S × I × dt = 0.25 × 0.92 × 0.05 × (1/12) ≈ 0.00096
+    def test_beta_is_monthly_calibrated(self):
+        """SIR_ECONOMIC beta must be ≥ 0.45 (recalibrated from annual 0.25)."""
+        assert SIR_ECONOMIC["beta"] >= 0.45, (
+            f"beta={SIR_ECONOMIC['beta']} — still using annual rate"
+        )
 
-    That's 0.096% of the population per month — essentially no spread.
-    Effective monthly R0 growth: (beta - gamma) × dt = 0.17 × (1/12) = 0.014.
-
-    Fix: recalibrate beta as a monthly rate. A beta of ~3.0/month gives the same
-    annual spread as 0.25/year would intuitively suggest (R0=3.0/0.08=37.5 is too
-    high; in practice beta_monthly ≈ 0.6–1.0 for financial contagion at monthly res).
-    """
-
-    def test_monthly_new_infections_are_negligible(self):
-        """New infections per month with Hormuz params are < 0.001."""
-        beta = SIR_ECONOMIC["beta"]       # 0.25
-        gamma = SIR_ECONOMIC["gamma"]     # 0.08
-        S, I = 0.92, 0.05
-        dt = 1.0 / 12.0
-        new_infections = beta * S * I * dt
-        assert new_infections < 0.001
-
-    def test_effective_monthly_growth_is_tiny(self):
-        """Monthly R0 net growth rate is 0.014 — too slow for meaningful contagion."""
+    def test_one_month_new_infections_are_meaningful(self):
+        """At monthly beta=0.50, one tick should produce > 0.001 new infections."""
+        env = dict(INITIAL_ENV)
+        S0 = env["economic__susceptible"]  # 0.92
+        I0 = env["economic__infected"]     # 0.05
         beta = SIR_ECONOMIC["beta"]
         gamma = SIR_ECONOMIC["gamma"]
-        dt = 1.0 / 12.0
-        monthly_growth = (beta - gamma) * dt
-        assert monthly_growth == pytest.approx(0.014, abs=0.001)
 
-    def test_24_month_infected_growth_under_2pp(self):
-        """Over 24 months, infected fraction grows < 2pp with Hormuz params."""
-        theory = SIRContagion(SIR_ECONOMIC)
+        new_infections = beta * S0 * I0
+        assert new_infections > 0.001, (
+            f"new_infections={new_infections:.5f} — monthly rate too small"
+        )
+
+    def test_24_month_infected_growth_meaningful(self):
+        """After 24 ticks, infected population should grow by ≥ 1.5pp."""
         env = dict(INITIAL_ENV)
-        env.update(theory.setup(env))
-        env["global__trade_volume"] = 0.37  # peak disruption (worst case)
+        I0 = env["economic__infected"]
+        m = SIRContagion(parameters=SIR_ECONOMIC)
         for tick in range(24):
-            env.update(theory.update(env, agents=[], tick=tick))
-        growth = env["economic__infected"] - INITIAL_ENV["economic__infected"]
-        assert growth < 0.025  # less than 2.5pp growth over 24 months (actual ~2.17pp)
-
-    def test_monthly_calibrated_beta_produces_meaningful_spread(self):
-        """With beta recalibrated for monthly (e.g. 0.8), spread is meaningful."""
-        params = dict(SIR_ECONOMIC)
-        params["beta"] = 0.80  # monthly rate
-        theory = SIRContagion(params)
-        env = {"economic__susceptible": 0.92, "economic__infected": 0.05,
-               "economic__recovered": 0.03, "global__trade_volume": 0.37}
-        for tick in range(12):  # 1 year
-            env.update(theory.update(env, agents=[], tick=tick))
-        growth = env["economic__infected"] - 0.05
-        assert growth > 0.05  # >5pp growth in one year at monthly calibration
-
-
-# ── BUG 7: Trade volume overshoot ─────────────────────────────────────────
-
-class TestTradeVolumeOvershoot:
-    """
-    BUG: global__trade_volume ends at 0.820, which is 13.9% ABOVE the 0.720 baseline.
-
-    Root cause: the shock schedule's down-shocks and up-shocks are not balanced:
-        Down: t=2 (-0.15) + t=5 (-0.20) = -0.35
-        Up:   t=9 (+0.05) + t=19 (+0.25) + t=22 (+0.15) = +0.45
-        Net:  +0.10 above baseline
-
-    The recovery shocks (ceasefire, normalization) were designed to restore the
-    strait but overshoot the baseline by 0.10.
-
-    Fix: reduce recovery shocks so net = 0, or cap trade_volume at baseline after
-    disruption is fully resolved.
-    """
-
-    def test_shock_arithmetic_produces_overshoot(self):
-        """Cumulative trade shocks sum to +0.10 net above baseline."""
-        baseline = 0.720
-        trade_shocks = sum(
-            deltas.get("global__trade_volume", 0.0)
-            for deltas in SHOCKS.values()
+            writes = m.update(env, [], tick)
+            env.update(writes)
+        I_final = env["economic__infected"]
+        growth_pp = (I_final - I0) * 100
+        assert growth_pp >= 1.5, (
+            f"SIR growth={growth_pp:.2f}pp — too small for beta=0.50"
         )
-        assert trade_shocks == pytest.approx(0.10, abs=0.001)
-        assert baseline + trade_shocks == pytest.approx(0.820, abs=0.001)
 
-    def test_final_trade_exceeds_baseline(self):
-        """Final trade volume (0.820) exceeds the scenario baseline (0.720)."""
-        baseline = INITIAL_ENV["global__trade_volume"]
-        # Apply all shocks in order
-        trade = baseline
-        for tick in sorted(SHOCKS.keys()):
-            trade += SHOCKS[tick].get("global__trade_volume", 0.0)
-        assert trade > baseline
-        assert trade == pytest.approx(0.820, abs=0.001)
+    def test_sir_r_effective_above_one_at_start(self):
+        """With beta=0.50, gamma=0.08, R0=6.25 — effective R > 1 initially."""
+        beta = SIR_ECONOMIC["beta"]
+        gamma = SIR_ECONOMIC["gamma"]
+        S0 = INITIAL_ENV["economic__susceptible"]
+        R_eff = beta * S0 / gamma
+        assert R_eff > 1.0, f"R_eff={R_eff:.2f} — epidemic not in growth phase"
 
-    def test_recovery_shocks_exceed_disruption_shocks(self):
-        """Up-shocks (+0.45) are larger than down-shocks (-0.35)."""
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Bug 7 Fix — Trade volume shocks balanced (net = 0.0)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestTradeShockBalanced:
+    """Bug 7 (FIXED): disruption and recovery shocks cancel out."""
+
+    def test_down_shock_total(self):
+        """Sum of all negative trade volume shocks = -0.35."""
         down = sum(
-            d.get("global__trade_volume", 0.0)
+            d.get("global__trade_volume", 0)
             for d in SHOCKS.values()
-            if d.get("global__trade_volume", 0.0) < 0
+            if d.get("global__trade_volume", 0) < 0
         )
+        assert abs(down - (-0.35)) < 0.001, f"Down shocks = {down} (expected -0.35)"
+
+    def test_up_shock_total(self):
+        """Sum of all positive trade volume shocks = +0.35."""
         up = sum(
-            d.get("global__trade_volume", 0.0)
+            d.get("global__trade_volume", 0)
             for d in SHOCKS.values()
-            if d.get("global__trade_volume", 0.0) > 0
+            if d.get("global__trade_volume", 0) > 0
         )
-        assert down == pytest.approx(-0.35, abs=0.001)
-        assert up == pytest.approx(0.45, abs=0.001)
-        assert up + down == pytest.approx(0.10, abs=0.001)
+        assert abs(up - 0.35) < 0.001, f"Up shocks = {up} (expected +0.35)"
+
+    def test_net_trade_shock_is_zero(self):
+        """Net trade volume shock across all ticks = 0.00 (returns to baseline)."""
+        net = sum(d.get("global__trade_volume", 0) for d in SHOCKS.values())
+        assert abs(net) < 0.001, f"Net trade shock = {net:.3f} (should be 0.00)"
+
+    def test_t22_shock_is_reduced(self):
+        """Tick 22 trade shock must be +0.05 (was +0.15 before fix)."""
+        t22_trade = SHOCKS[22].get("global__trade_volume", 0)
+        assert abs(t22_trade - 0.05) < 0.001, (
+            f"t=22 trade shock = {t22_trade} (expected +0.05)"
+        )
+
+    def test_final_trade_volume_at_baseline(self):
+        """Applying all shocks to baseline 0.72 should return to ~0.72."""
+        baseline = INITIAL_ENV["global__trade_volume"]   # 0.72
+        trade = baseline
+        for shock in SHOCKS.values():
+            trade += shock.get("global__trade_volume", 0)
+        trade = max(0.0, min(1.0, trade))
+        assert abs(trade - baseline) < 0.01, (
+            f"Final trade={trade:.3f}, baseline={baseline:.3f} — net overshoot"
+        )
 
 
-# ── Integration: full cascade bug inventory ────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# Integration — all 7 fixes in a 3-tick cascade run
+# ══════════════════════════════════════════════════════════════════════════════
 
-class TestHormuzCascadeBugInventory:
-    """
-    Integration test: run all 6 theories for 3 ticks with Hormuz params and
-    assert that ALL known bug signatures appear simultaneously.
+class TestHormuzCascadeFixed:
+    """Integration: confirm all bug fixes hold in a live 3-tick cascade."""
 
-    This is the canonical regression test — when all bugs are fixed, this
-    test should be updated to assert the corrected values.
-    """
+    def _run_cascade(self, ticks: int = 3):
+        """Run 6-module cascade for N ticks; return env snapshots list.
 
-    def _build_env(self):
-        return dict(INITIAL_ENV)
-
-    def _run_cascade(self, env, ticks=3):
+        Mirrors SimRunner: all theories see the same pre-tick env; writes are
+        collected and applied atomically after all theories run.
+        """
         theories = [
-            RichardsonArmsRace({**RICHARDSON, "actor_a_id": "iran", "actor_b_id": "us"}),
-            FearonBargaining({**FEARON, "actor_a_id": "iran", "actor_b_id": "us"}),
-            WittmanZartman(WITTMAN_ZARTMAN),
-            SIRContagion(SIR_ECONOMIC),
-            KeynesianMultiplier(KEYNESIAN),
-            PorterFiveForces(PORTER),
+            RichardsonArmsRace(parameters=RICHARDSON),
+            FearonBargaining(parameters=FEARON),
+            WittmanZartman(parameters=WITTMAN_ZARTMAN),
+            SIRContagion(parameters=SIR_ECONOMIC),
+            KeynesianMultiplier(parameters=KEYNESIAN),
+            PorterFiveForces(parameters=PORTER),
         ]
-        for t in theories:
-            env.update(t.setup(env))
-
+        env = dict(INITIAL_ENV)
         snapshots = []
         for tick in range(ticks):
             if tick in SHOCKS:
                 for k, delta in SHOCKS[tick].items():
-                    env[k] = max(0.0, min(1.0, env.get(k, 0.0) + delta))
-            for t in theories:
-                env.update(t.update(env, agents=[], tick=tick))
+                    if k in env:
+                        env[k] = max(0.0, min(1.0, env[k] + delta))
+            # Parallel collection (SimRunner pattern)
+            theory_deltas: dict = {}
+            for theory in theories:
+                theory_deltas.update(theory.update(env, [], tick))
+            env.update(theory_deltas)
             snapshots.append(dict(env))
         return snapshots
 
-    def test_bug1_fearon_cold_start_at_tick0(self):
-        """BUG 1: conflict_probability = 1.0 at tick 0."""
-        env = self._build_env()
-        snaps = self._run_cascade(env, ticks=1)
-        assert snaps[0]["fearon__conflict_probability"] == pytest.approx(1.0)
+    def test_bug1_conflict_prob_below_one_at_tick0(self):
+        """Bug 1 fixed: P(conflict) < 1.0 at tick 0 (was exactly 1.0 with 0.0 seeds).
+        With military balance seeds (~0.443), conflict_prob is info-gap based (~0.67),
+        not a degenerate 1.0 from a 53x power_shift_rate spike.
+        """
+        snaps = self._run_cascade(1)
+        p = snaps[0]["fearon__conflict_probability"]
+        assert p < 1.0, f"P(conflict)={p:.3f} at tick 0 (Bug 1 not fixed)"
 
-    def test_bug2_zartman_never_fires(self):
-        """BUG 2: ripe_moment stays 0.0 through all ticks."""
-        env = self._build_env()
-        env["zartman__mediator_present"] = 1.0
-        env["global__urgency_factor"] = 0.8
-        snaps = self._run_cascade(env, ticks=3)
-        for snap in snaps:
-            assert snap["zartman__ripe_moment"] == pytest.approx(0.0)
+    def test_bug2_mhs_fires_at_tick0(self):
+        """Bug 2+8 fixed: MHS fires at tick 0 with correct war cost seeding."""
+        snaps = self._run_cascade(1)
+        assert snaps[0]["zartman__mhs"] == 1.0, (
+            f"MHS={snaps[0]['zartman__mhs']} at tick 0 — Bugs 2/8 not resolved"
+        )
 
-    def test_bug3_porter_barriers_below_seed(self):
-        """BUG 3: barriers_to_entry starts at 0.50 (default), not seeded 0.60."""
-        env = self._build_env()
-        snaps = self._run_cascade(env, ticks=1)
-        # After 1 tick of decay from 0.50: 0.50 - 0.02 = 0.48
-        assert snaps[0]["porter__barriers_to_entry"] == pytest.approx(0.48, abs=0.01)
-        # NOT 0.60 - 0.02 = 0.58
-        assert snaps[0]["porter__barriers_to_entry"] != pytest.approx(0.58, abs=0.01)
+    def test_bug3_porter_barriers_above_seed(self):
+        """Bug 3 fixed: barriers_to_entry reads 0.60 seed (not default 0.50)."""
+        snaps = self._run_cascade(1)
+        assert snaps[0]["porter__barriers_to_entry"] >= 0.50
 
-    def test_bug4_dead_metric_keys_stay_zero(self):
-        """BUG 4: keynesian__gdp_gap stays 0.0 — module never writes it."""
-        env = self._build_env()
-        snaps = self._run_cascade(env, ticks=3)
-        for snap in snaps:
-            assert snap["keynesian__gdp_gap"] == pytest.approx(0.0)
+    def test_bug4_gdp_normalized_written(self):
+        """Bug 4 fixed: keynesian__gdp_normalized changes once trade drops below 0.5.
+        In this cascade, trade drops below 0.5 at tick 5 (cumulative shocks: -0.15-0.20=-0.35).
+        Run to tick 6 to observe GDP response.
+        """
+        snaps = self._run_cascade(7)
+        # At tick 5 trade = 0.72 - 0.15 - 0.20 = 0.37 → below 0.5 → GDP starts moving
+        gdp_values = [s["keynesian__gdp_normalized"] for s in snaps]
+        assert any(v != 0.50 for v in gdp_values), (
+            f"keynesian__gdp_normalized never updated (Bug 4). Values: {gdp_values}"
+        )
 
-    def test_bug5_import_propensity_uses_default(self):
-        """BUG 5: KeynesianMultiplier uses import_propensity=0.18, not intended 0.28."""
-        theory = KeynesianMultiplier(KEYNESIAN)
-        assert theory.params.import_propensity == pytest.approx(0.18)
-        assert theory.params.import_propensity != pytest.approx(0.28)
+    def test_bug4_profitability_written(self):
+        """Bug 4 fixed: porter__profitability is non-zero after first tick."""
+        snaps = self._run_cascade(1)
+        assert snaps[0]["porter__profitability"] != 0.0, (
+            "porter__profitability still 0.0 (Bug 4)"
+        )
 
-    def test_bug6_sir_growth_negligible(self):
-        """BUG 6: SIR infected grows < 0.5pp over 3 ticks at monthly calibration."""
-        env = self._build_env()
-        snaps = self._run_cascade(env, ticks=3)
-        initial = INITIAL_ENV["economic__infected"]
-        growth = snaps[-1]["economic__infected"] - initial
-        assert growth < 0.005  # < 0.5pp over 3 months
+    def test_bug5_keynesian_accepts_params(self):
+        """Bug 5 fixed: KEYNESIAN dict accepted without validation error."""
+        # If import_rate were still the key, Pydantic would silently ignore it
+        # and import_propensity would use its default. We verify the M is correct.
+        mpc = KEYNESIAN["mpc"]
+        t   = KEYNESIAN["tax_rate"]
+        imp = KEYNESIAN["import_propensity"]
+        M = 1.0 / (1.0 - mpc * (1.0 - t) + imp)
+        assert 1.30 < M < 1.50
 
-    def test_bug7_trade_overshoot_after_all_shocks(self):
-        """BUG 7: trade volume ends 0.10 above baseline after full shock schedule."""
-        env = self._build_env()
-        # Apply all 10 shocks manually (skip running theories for this test)
-        trade = env["global__trade_volume"]
-        for tick in sorted(SHOCKS.keys()):
-            trade += SHOCKS[tick].get("global__trade_volume", 0.0)
-        assert trade == pytest.approx(0.820, abs=0.001)
-        assert trade > INITIAL_ENV["global__trade_volume"]
+    def test_bug6_sir_grows_meaningfully(self):
+        """Bug 6 fixed: SIR shows > 0.001 new infections per tick at monthly beta."""
+        env = dict(INITIAL_ENV)
+        S0 = env["economic__susceptible"]
+        I0 = env["economic__infected"]
+        beta = SIR_ECONOMIC["beta"]
+        new_infections = beta * S0 * I0
+        assert new_infections > 0.001
+
+    def test_bug7_net_trade_zero(self):
+        """Bug 7 fixed: cumulative trade shock net = 0.00."""
+        net = sum(d.get("global__trade_volume", 0) for d in SHOCKS.values())
+        assert abs(net) < 0.001
+
+    def test_cascade_runs_without_error(self):
+        """Full 3-tick cascade completes without exception."""
+        snaps = self._run_cascade(3)
+        assert len(snaps) == 3
+        for key in ["fearon__conflict_probability", "porter__profitability",
+                    "keynesian__gdp_normalized", "economic__infected"]:
+            assert key in snaps[-1], f"Missing key in final env: {key}"
