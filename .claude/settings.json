@@ -1,4 +1,7 @@
 {
+  "env": {
+    "FRED_API_KEY": "aebea265de8cb7022decdb7f002c7cad"
+  },
   "permissions": {
     "allow": [
       "Bash(*)",

@@ -218,6 +218,19 @@ Before writing, verify:
 
 ---
 
+## Phase 5: PDF Export (STANDARD — do not skip)
+
+After writing the markdown assessment, convert it to PDF:
+
+```bash
+python scripts/md_to_pdf.py forge/research/{slug}-assessment.md
+# Output: forge/research/{slug}-assessment.pdf
+```
+
+Report the output path and file size. Skip only with `--no-pdf`.
+
+---
+
 ## Rules
 
 1. **Synthesise, don't concatenate.** The assessment should read as a coherent document, not two briefs stapled together.

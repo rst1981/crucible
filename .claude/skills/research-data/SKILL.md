@@ -56,11 +56,22 @@ FRED hosts 800,000+ economic time series. Identify the most relevant series for 
 | Macro general | GDP (GDP), inflation (CPIAUCSL), unemployment (UNRATE), yield curve |
 | Supply chain | Supplier delivery times, inventory/sales ratios, freight indices |
 
-For each relevant series:
+For each relevant series, fetch via the FRED API (key is in env as FRED_API_KEY):
+
+```bash
+# Latest 5 observations for a series:
+curl -s "https://api.stlouisfed.org/fred/series/observations?series_id={ID}&api_key=$FRED_API_KEY&limit=5&sort_order=desc&file_type=json"
+
+# Series metadata:
+curl -s "https://api.stlouisfed.org/fred/series?series_id={ID}&api_key=$FRED_API_KEY&file_type=json"
+```
+
 1. Note: series ID, title, frequency, last updated
-2. Fetch most recent 5 data points as a sanity check
+2. Extract the 5 most recent values from the API response
 3. Assess: does this directly map to a SimSpec parameter?
 4. Note the mapping: `FRED:{series_id}` → `SimSpec.parameters.{param_name}`
+
+**Never use the direct CSV endpoint** (`fredgraph.csv`) — it requires browser auth and returns 403.
 
 ---
 
@@ -163,6 +174,19 @@ ls d:/dev/crucible/forge/specs/ 2>/dev/null
 
 Patch conservatively — only update parameters that have high-confidence data backing.
 Leave uncertain parameters at their existing values and note them in the brief.
+
+---
+
+## Phase 6: PDF Export (STANDARD — do not skip)
+
+After writing the markdown brief, convert it to PDF:
+
+```bash
+python scripts/md_to_pdf.py forge/research/data-brief-{slug}.md
+# Output: forge/research/data-brief-{slug}.pdf
+```
+
+Report the output path and file size. Skip only with `--no-pdf`.
 
 ---
 

@@ -256,7 +256,20 @@ with the correct relative path: `../../scenarios/{slug}/charts/{filename}`.
 
 ---
 
-## Phase 6: Quality check
+## Phase 6: PDF Export (STANDARD — do not skip)
+
+After writing the markdown findings document, convert it to PDF:
+
+```bash
+python scripts/md_to_pdf.py forge/research/{slug}-simulation-results.md
+# Output: forge/research/{slug}-simulation-results.pdf
+```
+
+Report the output path and file size. Skip only with `--no-pdf`.
+
+---
+
+## Phase 7: Quality check
 
 Before finalising:
 - [ ] Every number in the Executive Summary is sourced from results.json (not estimated)

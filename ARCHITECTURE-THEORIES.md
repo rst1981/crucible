@@ -1,6 +1,6 @@
 # Crucible — Theory Modules Architecture
 
-> Reference document for all five theory modules in the Crucible simulation engine.
+> Reference document for all 25 theory modules in the Crucible simulation engine.
 > Each theory is a plugin that runs inside the SimRunner tick loop.
 > Target audience: developers implementing theory stubs in Week 2.
 >
@@ -30,10 +30,17 @@
 │      │                                                                   │
 │      └── record_metrics(env, tick)                                       │
 │                                                                          │
-│  Theories active in Crucible v1:                                         │
-│    Priority 0: richardson_arms_race, keynesian_multiplier,               │
-│                porter_five_forces                                        │
-│    Priority 1: fearon_bargaining, wittman_zartman                        │
+│  Theory library — 25 modules (core/theories/):                           │
+│    Conflict:  richardson_arms_race, fearon_bargaining, wittman_zartman   │
+│    Macro:     keynesian_multiplier, is_lm, solow_growth                  │
+│    Market:    porter_five_forces, cournot_oligopoly, stackelberg_        │
+│               leadership, cobweb_market, hotelling_cpr                   │
+│    Innovation: bass_diffusion, fisher_pry, schumpeter_disruption,        │
+│                experience_curve                                           │
+│    Finance:   minsky_instability, principal_agent, efficiency_wages      │
+│    M&A:       acquirer_discount, event_study, brand_equity_decay         │
+│    Social:    opinion_dynamics, sir_contagion                            │
+│    Regulatory: regulatory_shock                                           │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 

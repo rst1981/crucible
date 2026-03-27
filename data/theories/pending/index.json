@@ -1,0 +1,53 @@
+[
+  {
+    "pending_id": "pt-platform-tipping-001",
+    "theory_id": "platform_tipping",
+    "display_name": "Platform Tipping (Rochet-Tirole)",
+    "domains": [
+      "technology",
+      "competitive_dynamics",
+      "market",
+      "innovation",
+      "corporate_strategy"
+    ],
+    "status": "approved",
+    "smoke_passed": true,
+    "created_at": "2026-03-27T04:48:08.991665+00:00",
+    "source_type": "arxiv",
+    "citation": "Rochet, J.C. & Tirole, J. (2003). Platform Competition in Two-Sided Markets. JEEA 1(4), 990\u20131029."
+  },
+  {
+    "pending_id": "pt-narrative-contagion-001",
+    "theory_id": "narrative_contagion",
+    "display_name": "Narrative Contagion (Shiller)",
+    "domains": [
+      "behavioral_finance",
+      "social",
+      "equity",
+      "market",
+      "contagion"
+    ],
+    "status": "approved",
+    "smoke_passed": true,
+    "created_at": "2026-03-27T04:48:08.991665+00:00",
+    "source_type": "ssrn",
+    "citation": "Shiller, R.J. (2017). Narrative Economics. AER 107(4), 967\u20131004. NBER WP 23075."
+  },
+  {
+    "pending_id": "pt-compute-efficiency-001",
+    "theory_id": "compute_efficiency",
+    "display_name": "Compute Efficiency Erosion (Lu 2025)",
+    "domains": [
+      "technology",
+      "innovation",
+      "competitive_dynamics",
+      "market",
+      "corporate_strategy"
+    ],
+    "status": "approved",
+    "smoke_passed": true,
+    "created_at": "2026-03-27T04:48:08.991665+00:00",
+    "source_type": "arxiv",
+    "citation": "Lu, C.P. (2025). The Race to Efficiency: A New Perspective on AI Scaling Laws. arXiv:2501.02156."
+  }
+]

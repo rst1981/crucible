@@ -9,7 +9,7 @@
 ## What it is
 
 The Model Library gives consultants (Forge) and clients (Portal) a
-structured way to understand, browse, and apply the 23+ academic theories
+structured way to understand, browse, and apply the 25 academic theories
 that power Crucible simulations. It serves three use cases:
 
 1. **Discovery** — "What models exist? What do they do?"

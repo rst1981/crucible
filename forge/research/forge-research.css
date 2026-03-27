@@ -1,0 +1,147 @@
+/* forge/research/forge-research.css — Crucible research document style
+   Used by scripts/md_to_pdf.py for theory briefs, data briefs,
+   assessments, and findings documents.
+*/
+
+@page {
+  margin: 20mm 18mm 20mm 18mm;
+  size: A4;
+}
+
+body {
+  font-size: 10.5px;
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  color: #1a1a1a;
+  line-height: 1.5;
+}
+
+h1 {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  border-bottom: 2px solid #1a1a1a;
+  padding-bottom: 6px;
+}
+
+h2 {
+  font-size: 14px;
+  font-weight: 700;
+  margin-top: 24px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 3px;
+}
+
+h3 {
+  font-size: 11.5px;
+  font-weight: 700;
+  margin-top: 14px;
+  margin-bottom: 4px;
+}
+
+h4 {
+  font-size: 10.5px;
+  font-weight: 700;
+  margin-top: 10px;
+  margin-bottom: 2px;
+}
+
+p {
+  margin: 0 0 8px 0;
+}
+
+/* --- Tables --- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9.5px;
+  table-layout: fixed;
+  word-wrap: break-word;
+  margin-bottom: 12px;
+}
+
+th, td {
+  border: 1px solid #bbb;
+  padding: 4px 7px;
+  vertical-align: top;
+}
+
+th {
+  background: #eef0f3;
+  font-weight: 700;
+  text-align: left;
+}
+
+tr:nth-child(even) td {
+  background: #f9f9fb;
+}
+
+/* --- Code blocks --- */
+pre {
+  background: #f4f4f6;
+  border: 1px solid #d0d0d8;
+  border-radius: 3px;
+  padding: 8px 10px;
+  font-size: 8.5px;
+  font-family: 'Courier New', Courier, monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin-bottom: 10px;
+}
+
+code {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 9px;
+  background: #f0f0f4;
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+
+pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: 8.5px;
+}
+
+/* --- Lists --- */
+ul, ol {
+  margin: 4px 0 8px 0;
+  padding-left: 18px;
+}
+
+li {
+  margin-bottom: 3px;
+}
+
+/* --- Blockquotes (used for notes/callouts) --- */
+blockquote {
+  border-left: 3px solid #888;
+  margin: 8px 0;
+  padding: 4px 10px;
+  color: #444;
+  font-style: italic;
+  background: #f8f8fa;
+}
+
+/* --- Horizontal rules --- */
+hr {
+  border: none;
+  border-top: 1px solid #ccc;
+  margin: 16px 0;
+}
+
+/* --- Links --- */
+a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+/* --- Strong / em --- */
+strong { font-weight: 700; }
+em { font-style: italic; }
+
+/* --- Header meta line (bold date / skill / version) --- */
+p strong:first-child {
+  font-weight: 700;
+}

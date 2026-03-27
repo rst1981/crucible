@@ -1,12 +1,14 @@
 ---
 name: research-theory
-version: 1.0.0
+version: 1.1.0
 description: |
   Given a scenario domain or free-text description, searches arXiv and SSRN for
   relevant academic theory, summarizes key models and their parameters, and
-  recommends which Crucible theory modules to activate. Use before designing a
-  new simulation or when the Theory Mapper needs grounding. Outputs a structured
-  theory brief and updates the SimSpec theory list if one is open.
+  recommends which Crucible theory modules to activate. Automatically builds and
+  hot-loads library gap candidates rated ADD into core/theories/discovered/ via
+  TheoryBuilder. Use before designing a new simulation or when the Theory Mapper
+  needs grounding. Outputs a structured theory brief and updates the SimSpec
+  theory list if one is open.
 allowed-tools:
   - WebSearch
   - WebFetch
@@ -78,16 +80,53 @@ For each result:
 
 ## Phase 3: Library Cross-reference
 
-Read the Crucible theory library from CONTEXT.md and PROPOSAL.md:
+Check the current Crucible theory library:
 
 ```bash
-grep -A 5 "Theory Library" d:/dev/crucible/CONTEXT.md
+ls /Users/richtakacs/crucible/core/theories/*.py | grep -v __init__ | grep -v base | xargs -I{} basename {} .py
+ls /Users/richtakacs/crucible/core/theories/discovered/ 2>/dev/null
 ```
 
 For each theory found in research:
 - **Already in library** → note which module, flag any new parameter estimates
 - **Not in library, high relevance** → mark as `CANDIDATE: ADD`
 - **Not in library, niche** → mark as `CANDIDATE: FUTURE`
+
+---
+
+## Phase 3b: Build Library Gap Candidates (STANDARD — do not skip)
+
+For every gap rated `CANDIDATE: ADD`, attempt to build it now via TheoryBuilder:
+
+```python
+from forge.theory_builder import TheoryBuilder, auto_approve_if_passing
+from forge.researchers.base import ResearchResult
+
+builder = TheoryBuilder()
+
+# For each ADD candidate:
+result = ResearchResult(
+    source="arxiv",          # or "ssrn"
+    title="{paper title}",
+    authors=["{author}"],
+    year={year},
+    abstract="{abstract text}",
+    url="{url}",
+    theory_candidates=["{proposed_theory_id}"],
+)
+pt = builder.build_from_paper(result, proposed_id="{proposed_theory_id}")
+if pt:
+    approved = auto_approve_if_passing(pt)
+    # approved=True → hot-loaded into core/theories/discovered/
+    # approved=False → in pending queue at data/theories/pending/
+```
+
+Run this for each ADD candidate. Report results in the brief:
+- **AUTO-APPROVED** — built, smoke-tested, hot-loaded. Now in library.
+- **PENDING REVIEW** — built but smoke test failed. In `data/theories/pending/` for manual review.
+- **BUILD FAILED** — TheoryBuilder could not generate valid code. Mark as FUTURE.
+
+Skip this phase only with `--no-build`.
 
 ---
 
@@ -132,14 +171,26 @@ These models appeared in research but aren't in the Crucible library yet:
 
 ---
 
-## Phase 5: SimSpec Update (if applicable)
+## Phase 5: PDF Export (STANDARD — do not skip)
+
+After writing the markdown brief, convert it to PDF:
+
+```bash
+python scripts/md_to_pdf.py forge/research/theory-brief-{slug}.md
+# Output: forge/research/theory-brief-{slug}.pdf
+```
+
+Report the output path and file size. Skip only with `--no-pdf`.
+
+---
+
+## Phase 6: SimSpec Update (if applicable)
 
 If a SimSpec is open in the current session (`forge/specs/*.json`), update the `theories` array
 with the recommended modules:
 
 ```bash
-# Check for open SimSpec
-ls d:/dev/crucible/forge/specs/ 2>/dev/null
+ls /Users/richtakacs/crucible/forge/specs/ 2>/dev/null
 ```
 
 If found, add the recommended theory IDs to the `theories` list and note calibration

@@ -13,7 +13,7 @@
 | BDI Agents | `core/agents/base.py` | ✅ Implemented | 131 passing |
 | Theory base + registry | `core/theories/base.py`, `__init__.py` | ✅ Implemented | 32 passing |
 | SimRunner | `core/sim_runner.py` | ✅ Implemented | — |
-| Theory modules × 23 | `core/theories/` | ✅ Implemented | — |
+| Theory modules × 25 | `core/theories/` | ✅ Implemented | — |
 | Theory Catalog API | `api/catalog.py`, `api/routers/theories.py` | 🔲 Week 5 | — |
 | Ensemble API | `api/routers/ensembles.py` | 🔲 Week 5 | — |
 | Recommendation service | `api/services/recommendation.py` | 🔲 Week 5 | — |
@@ -962,14 +962,34 @@ No circular imports. Each layer only depends on the layer below it.
 
 ---
 
-## Next: Theory Stubs (Week 1, Day 4–5)
+## Theory Library (25 modules)
 
-Five theory stubs to implement (bodies can return `{}` initially, flesh out in Week 2):
+All implemented and registered in `core/theories/`:
 
 | Theory ID | File | Domain |
 |-----------|------|--------|
-| `richardson_arms_race` | `core/theories/richardson_arms_race.py` | Conflict escalation |
-| `wittman_zartman` | `core/theories/wittman_zartman.py` | Negotiation / war termination |
+| `acquirer_discount` | `core/theories/acquirer_discount.py` | M&A / event study |
+| `bass_diffusion` | `core/theories/bass_diffusion.py` | Innovation / product adoption |
+| `brand_equity_decay` | `core/theories/brand_equity_decay.py` | Brand / reputation |
+| `cobweb_market` | `core/theories/cobweb_market.py` | Supply/demand lag cycles |
+| `cournot_oligopoly` | `core/theories/cournot_oligopoly.py` | Oligopoly market structure |
+| `efficiency_wages` | `core/theories/efficiency_wages.py` | Labour / human capital |
+| `event_study` | `core/theories/event_study.py` | M&A / event study |
+| `experience_curve` | `core/theories/experience_curve.py` | Cost learning curves |
 | `fearon_bargaining` | `core/theories/fearon_bargaining.py` | Bargaining model of war |
+| `fisher_pry` | `core/theories/fisher_pry.py` | Technology substitution |
+| `hotelling_cpr` | `core/theories/hotelling_cpr.py` | Natural resource extraction |
+| `is_lm` | `core/theories/is_lm.py` | Macro / monetary-fiscal policy |
 | `keynesian_multiplier` | `core/theories/keynesian_multiplier.py` | Macro / fiscal policy |
+| `lotka_volterra` | `core/theories/lotka_volterra.py` | Predator-prey / competition |
+| `minsky_instability` | `core/theories/minsky_instability.py` | Financial fragility |
+| `opinion_dynamics` | `core/theories/opinion_dynamics.py` | Social influence / polarisation |
 | `porter_five_forces` | `core/theories/porter_five_forces.py` | Market competitive dynamics |
+| `principal_agent` | `core/theories/principal_agent.py` | Incentive alignment |
+| `regulatory_shock` | `core/theories/regulatory_shock.py` | Regulatory / policy shock |
+| `richardson_arms_race` | `core/theories/richardson_arms_race.py` | Conflict escalation |
+| `schumpeter_disruption` | `core/theories/schumpeter_disruption.py` | Creative destruction |
+| `sir_contagion` | `core/theories/sir_contagion.py` | Epidemic / information spread |
+| `solow_growth` | `core/theories/solow_growth.py` | Long-run economic growth |
+| `stackelberg_leadership` | `core/theories/stackelberg_leadership.py` | Market leadership / first-mover |
+| `wittman_zartman` | `core/theories/wittman_zartman.py` | Negotiation / war termination |
