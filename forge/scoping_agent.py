@@ -542,6 +542,13 @@ Rules:
             self._mark_research_filled_gaps(session)
 
         open_gaps = session.open_gaps()
+        logger.info(
+            "_run_interview_turn: turn_count=%d open_gaps=%s all_gaps=%s metadata=%s",
+            session.turn_count,
+            [g.field_path for g in open_gaps],
+            [(g.field_path, g.filled) for g in session.gaps],
+            session.simspec.metadata if session.simspec else {},
+        )
         if not open_gaps or session.turn_count >= MAX_TURNS:
             self._auto_fill_gaps(session)
             session.state = ForgeState.THEORY_MAPPING
