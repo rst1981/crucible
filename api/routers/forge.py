@@ -142,3 +142,84 @@ async def delete_session(session_id: str):
     """Delete a scoping session."""
     _get_session(session_id)  # 404 if not found
     del _sessions[session_id]
+
+
+# ── Theory library / pending queue routes ──────────────────────────────────────
+
+@router.get("/theories/library")
+async def list_library() -> dict:
+    """List all registered theories (built-in + approved discovered)."""
+    from core.theories import list_theories, get_theory
+    theories = []
+    for tid in list_theories():
+        cls = get_theory(tid)
+        module = getattr(cls, "__module__", "")
+        theories.append({
+            "theory_id": tid,
+            "domains": getattr(cls, "DOMAINS", []),
+            "source": "discovered" if "discovered" in module else "builtin",
+        })
+    return {"count": len(theories), "theories": theories}
+
+
+@router.get("/theories/pending")
+async def list_pending_theories(status: str | None = None) -> dict:
+    """
+    List theories queued for review.
+    Optional ?status=pending|approved|rejected filter.
+    """
+    from forge.theory_builder import list_pending
+    entries = list_pending(status=status)
+    return {"count": len(entries), "pending": entries}
+
+
+@router.get("/theories/pending/{pending_id}")
+async def get_pending_theory(pending_id: str) -> dict:
+    """Get the full record for a pending theory including generated code."""
+    from forge.theory_builder import load_pending
+    pt = load_pending(pending_id)
+    if pt is None:
+        raise HTTPException(status_code=404, detail=f"Pending theory '{pending_id}' not found")
+    return pt.to_dict()
+
+
+@router.post("/theories/pending/{pending_id}/approve", status_code=200)
+async def approve_pending_theory(pending_id: str) -> dict:
+    """
+    Approve a pending theory:
+    Writes code to core/theories/discovered/, hot-loads into registry.
+    """
+    from forge.theory_builder import approve, load_pending
+    pt = load_pending(pending_id)
+    if pt is None:
+        raise HTTPException(status_code=404, detail=f"Pending theory '{pending_id}' not found")
+    if pt.status != "pending":
+        raise HTTPException(
+            status_code=409, detail=f"Theory '{pending_id}' is already {pt.status}"
+        )
+    try:
+        file_path = approve(pending_id, reviewed_by="consultant")
+        return {
+            "theory_id": pt.theory_id,
+            "status": "approved",
+            "file_path": str(file_path),
+            "message": f"'{pt.theory_id}' is now active in the theory library.",
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/theories/pending/{pending_id}/reject", status_code=200)
+async def reject_pending_theory(pending_id: str) -> dict:
+    """Mark a pending theory as rejected."""
+    from forge.theory_builder import reject, load_pending
+    pt = load_pending(pending_id)
+    if pt is None:
+        raise HTTPException(status_code=404, detail=f"Pending theory '{pending_id}' not found")
+    if pt.status != "pending":
+        raise HTTPException(
+            status_code=409, detail=f"Theory '{pending_id}' is already {pt.status}"
+        )
+    from forge.theory_builder import reject
+    reject(pending_id, reviewed_by="consultant")
+    return {"theory_id": pt.theory_id, "status": "rejected"}

@@ -194,6 +194,53 @@ def reject(pending_id: str, reviewed_by: str = "consultant") -> None:
     logger.info("Theory '%s' rejected", pending_id)
 
 
+def auto_approve_if_passing(pt: PendingTheory) -> bool:
+    """
+    Auto-approve a PendingTheory if its smoke test passed.
+
+    Writes the generated code to core/theories/discovered/{theory_id}.py,
+    hot-loads it into the registry, and marks the record as approved.
+
+    Returns True if approved, False if skipped (smoke test failed or already
+    registered under the same theory_id).
+
+    Called by the research pipeline when a paper contains a new formal model
+    not yet in the library. Human review is still available via the pending
+    queue for theories that fail the smoke test.
+    """
+    from core.theories import list_theories
+
+    if not pt.smoke_test.get("passed"):
+        logger.info(
+            "auto_approve_if_passing: skipped '%s' — smoke test failed (%s)",
+            pt.theory_id,
+            pt.smoke_test.get("error", "unknown error"),
+        )
+        return False
+
+    if pt.theory_id in list_theories():
+        logger.info(
+            "auto_approve_if_passing: skipped '%s' — already in registry",
+            pt.theory_id,
+        )
+        pt.status = "approved"
+        pt.reviewed_at = datetime.now(timezone.utc).isoformat()
+        pt.reviewed_by = "auto"
+        pt.save()
+        return False
+
+    try:
+        approve(pt.pending_id, reviewed_by="auto")
+        logger.info("auto_approve_if_passing: approved '%s'", pt.theory_id)
+        return True
+    except Exception as exc:
+        logger.error(
+            "auto_approve_if_passing: failed to approve '%s': %s",
+            pt.theory_id, exc,
+        )
+        return False
+
+
 # ── Smoke test ────────────────────────────────────────────────────────────────
 
 def _smoke_test(code: str) -> SmokeTestResult:

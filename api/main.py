@@ -5,12 +5,17 @@ Run locally:
     uvicorn api.main:app --reload --port 8000
 
 Endpoints:
-    POST   /forge/intake                          Create scoping session
-    GET    /forge/intake/{session_id}             Poll session state
-    POST   /forge/intake/{session_id}/message     Stream agent response (SSE)
-    DELETE /forge/intake/{session_id}             Delete session
-    GET    /health                                Health check
-    GET    /                                      API info
+    POST   /forge/intake                                   Create scoping session
+    GET    /forge/intake/{session_id}                      Poll session state
+    POST   /forge/intake/{session_id}/message              Stream agent response (SSE)
+    DELETE /forge/intake/{session_id}                      Delete session
+    GET    /forge/theories/library                         List all registered theories
+    GET    /forge/theories/pending                         List pending theories
+    GET    /forge/theories/pending/{id}                    Get pending theory detail
+    POST   /forge/theories/pending/{id}/approve            Approve + load theory
+    POST   /forge/theories/pending/{id}/reject             Reject theory
+    GET    /health                                         Health check
+    GET    /                                               API info
 """
 from __future__ import annotations
 

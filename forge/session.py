@@ -94,6 +94,10 @@ class ResearchContext:
     # env keys that research has answered (so we don't ask the user)
     env_keys_calibrated: set[str]             = field(default_factory=set)
     research_complete:   bool                 = False
+    # Library gap results: theories auto-added during this session
+    library_additions:   list[str]            = field(default_factory=list)
+    # Theories found in papers that failed smoke test → in pending queue
+    library_gaps:        list[str]            = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -102,6 +106,8 @@ class ResearchContext:
             "theory_candidates":   self.theory_candidates,
             "parameter_estimates": self.parameter_estimates,
             "env_keys_calibrated": list(self.env_keys_calibrated),
+            "library_additions":   self.library_additions,
+            "library_gaps":        self.library_gaps,
         }
 
 

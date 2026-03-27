@@ -307,6 +307,20 @@ class ScopingAgent:
             self._mark_research_filled_gaps(session)
             session.state = ForgeState.DYNAMIC_INTERVIEW
 
+            ctx = session.research_context
+            if ctx.library_additions:
+                yield (
+                    f"Added {len(ctx.library_additions)} new theor"
+                    f"{'y' if len(ctx.library_additions) == 1 else 'ies'} to library: "
+                    f"{', '.join(ctx.library_additions)}.\n"
+                )
+            if ctx.library_gaps:
+                yield (
+                    f"{len(ctx.library_gaps)} theor"
+                    f"{'y' if len(ctx.library_gaps) == 1 else 'ies'} queued for review "
+                    f"(smoke test failed): {', '.join(ctx.library_gaps)}.\n"
+                )
+
             yield "Research complete. Generating first question...\n"
             reply = await self._run_interview_turn(session, user_message=None)
             yield reply
@@ -371,15 +385,79 @@ class ScopingAgent:
             if isinstance(result, list):
                 ctx.results.extend(result)
 
+        # Library gap fill: run academic results through TheoryBuilder.
+        # Papers containing new formal models not yet in the library are
+        # auto-approved (if smoke test passes) or queued for review.
+        academic = [r for r in ctx.results if r.source_type in ("arxiv", "ssrn") and r.ok]
+        if academic:
+            await self._fill_library_gaps(academic, ctx)
+
         # extraction pass: use Claude to pull theory candidates + param estimates
+        # (runs after gap fill so newly added theories appear in list_theories())
         await self._extraction_pass(ctx, session.simspec)
         ctx.research_complete = True
         logger.info(
-            "Research complete: %d results, %d theory candidates, %d param estimates",
+            "Research complete: %d results, %d theory candidates, %d param estimates, "
+            "%d library additions, %d queued for review",
             len(ctx.results),
             len(ctx.theory_candidates),
             len(ctx.parameter_estimates),
+            len(ctx.library_additions),
+            len(ctx.library_gaps),
         )
+
+    async def _fill_library_gaps(
+        self,
+        academic_results: list,
+        ctx: ResearchContext,
+    ) -> None:
+        """
+        Pass academic research results (arXiv, SSRN) through TheoryBuilder.
+
+        For each paper:
+        - If it contains a formal model AND the theory_id is not already in
+          the library: generate code, run smoke test.
+          - Smoke PASS  → auto-approve: write to discovered/, hot-load, available immediately.
+          - Smoke FAIL  → save to pending queue for human review.
+        - If theory_id is already in the library: skip.
+
+        Results are recorded in ctx.library_additions and ctx.library_gaps.
+        """
+        from forge.theory_builder import TheoryBuilder, auto_approve_if_passing
+        from core.theories import list_theories
+
+        builder = TheoryBuilder()
+        existing = set(list_theories())
+
+        for result in academic_results:
+            try:
+                pending = await builder.process(result)
+            except Exception as exc:
+                logger.warning("TheoryBuilder.process failed for '%s': %s", result.title, exc)
+                continue
+
+            if pending is None:
+                continue  # no formal model in this paper
+
+            if pending.theory_id in existing:
+                logger.debug(
+                    "Library gap fill: '%s' already in library, skipping", pending.theory_id
+                )
+                continue
+
+            if auto_approve_if_passing(pending):
+                ctx.library_additions.append(pending.theory_id)
+                existing.add(pending.theory_id)  # update local set for this session
+                logger.info(
+                    "Library gap filled: '%s' auto-approved from '%s'",
+                    pending.theory_id, result.title,
+                )
+            else:
+                ctx.library_gaps.append(pending.theory_id)
+                logger.info(
+                    "Library gap queued: '%s' needs review (smoke test failed)",
+                    pending.theory_id,
+                )
 
     async def _extraction_pass(
         self,
@@ -555,7 +633,9 @@ Rules:
         return reply
 
     async def _run_theory_mapping(self, session: ForgeSession) -> str:
-        recommendations = self._theory_mapper.map(session.simspec)
+        # Include any theories auto-added to the library during research
+        # in the mapper's candidate pool (they're already registered).
+        recommendations = self._theory_mapper.recommend_from_spec(session.simspec)
         theories = [
             TheoryRef(
                 theory_id=r.theory_id,
@@ -566,6 +646,16 @@ Rules:
         ]
         object.__setattr__(session.simspec, "theories", theories)
         session.state = ForgeState.VALIDATION
+
+        additions = session.research_context.library_additions
+        gaps = session.research_context.library_gaps
+        if additions or gaps:
+            logger.info(
+                "Theory mapping: %d new theories added to library, %d queued for review. "
+                "Library additions: %s",
+                len(additions), len(gaps), additions,
+            )
+
         return await self._run_validation(session)
 
     async def _run_validation(self, session: ForgeSession) -> str:
@@ -681,7 +771,7 @@ Rules:
             return {"question": full_question}, True  # stop_for_user=True
 
         if name == "select_theories":
-            recs = self._theory_mapper.map(session.simspec)
+            recs = self._theory_mapper.recommend_from_spec(session.simspec)
             theories = [
                 TheoryRef(theory_id=r.theory_id, priority=r.suggested_priority)
                 for r in recs
