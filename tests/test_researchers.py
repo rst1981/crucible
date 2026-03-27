@@ -221,8 +221,10 @@ class TestFredAdapter:
 
     def test_no_api_key_returns_error(self):
         client = _mock_client()
-        adapter = FredAdapter(client, api_key="")
-        results = run(adapter.fetch("GDP"))
+        with patch.dict(os.environ, {}, clear=False) as env:
+            env.pop("FRED_API_KEY", None)
+            adapter = FredAdapter(client, api_key="")
+            results = run(adapter.fetch("GDP"))
         assert len(results) == 1
         assert not results[0].ok
         assert "FRED_API_KEY" in results[0].error

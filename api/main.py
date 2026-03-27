@@ -21,6 +21,14 @@ Endpoints:
     GET    /simulations                                    List runs
     GET    /simulations/{sim_id}                           Poll a run
     GET    /simulations/compare/{sim_id_a}/{sim_id_b}      Compare two runs
+    GET    /api/theories                                   Theory catalog (filterable)
+    GET    /api/theories/{theory_id}                       Theory detail
+    POST   /api/theories/recommend                         Recommend theories for a scenario
+    GET    /api/ensembles                                  List saved ensembles
+    POST   /api/ensembles                                  Create ensemble
+    GET    /api/ensembles/{id}                             Get ensemble
+    DELETE /api/ensembles/{id}                             Delete ensemble
+    POST   /api/ensembles/{id}/fork                        Fork ensemble
     GET    /health                                         Health check
     GET    /                                               API info
 """
@@ -33,6 +41,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.routers import forge as forge_router
 from api.routers import simulations as simulations_router
+from api.routers import theories as theories_router
+from api.routers import ensembles as ensembles_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,6 +74,8 @@ app.add_middleware(
 
 app.include_router(forge_router.router)
 app.include_router(simulations_router.router)
+app.include_router(theories_router.router)
+app.include_router(ensembles_router.router)
 
 # ── System routes ──────────────────────────────────────────────────────────
 
@@ -86,5 +98,11 @@ async def root() -> dict:
             "sim_launch":        "POST /simulations",
             "sim_poll":          "GET  /simulations/{sim_id}",
             "sim_compare":       "GET  /simulations/compare/{sim_id_a}/{sim_id_b}",
+            "theory_catalog":    "GET  /api/theories",
+            "theory_detail":     "GET  /api/theories/{theory_id}",
+            "theory_recommend":  "POST /api/theories/recommend",
+            "ensemble_list":     "GET  /api/ensembles",
+            "ensemble_create":   "POST /api/ensembles",
+            "ensemble_fork":     "POST /api/ensembles/{id}/fork",
         },
     }
