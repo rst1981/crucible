@@ -436,6 +436,15 @@ Operation Epic Fury — Strait of Hormuz crisis simulation. War start: Feb 25, 2
 - Always use `python -m uvicorn` — Scripts not on PATH
 - NEVER use Vercel CLI — only `git push` to deploy frontend
 
+**revisit_agent_model**  
+*User wants to revisit the agent model design in the next session*
+
+Revisit the agent model next session.
+
+**Why:** User flagged this as a priority follow-up after the Week 2 research adapter sprint. No specific concern stated — likely a design review of the BDI architecture, belief update mechanisms, or how agents interact with theory modules.
+
+**How to apply:** At the start of the next session, surface this as the first agenda item before continuing with Week 3 work.
+
 <!-- memory:end -->
 
 ---
