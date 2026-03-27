@@ -521,7 +521,7 @@ Rules:
             extracted = json.loads(raw)
             ctx.theory_candidates = extracted.get("theory_candidates", [])
             ctx.parameter_estimates = {
-                k: float(max(0.0, min(1.0, v)))
+                k: float(max(0.0, min(1.0, float(v))))
                 for k, v in (extracted.get("parameter_estimates") or {}).items()
             }
             ctx.env_keys_calibrated = set(ctx.parameter_estimates.keys())
@@ -924,7 +924,7 @@ def _apply_patch(simspec: SimSpec, patch: dict[str, Any]) -> None:
     if "initial_environment" in patch:
         env = dict(simspec.initial_environment)
         env.update({
-            k: float(max(0.0, min(1.0, v)))
+            k: float(max(0.0, min(1.0, float(v))))
             for k, v in patch["initial_environment"].items()
         })
         object.__setattr__(simspec, "initial_environment", env)
