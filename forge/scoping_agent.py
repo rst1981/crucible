@@ -576,8 +576,8 @@ Rules:
             messages.append({"role": "user", "content": context_injection})
 
         # Tool-use loop
-        max_tool_rounds = 8
-        for _ in range(max_tool_rounds):
+        max_tool_rounds = 20
+        for round_num in range(max_tool_rounds):
             resp = self._client.messages.create(
                 model=_AGENT_MODEL,
                 max_tokens=1024,
@@ -589,6 +589,7 @@ Rules:
             # Extract text and tool calls
             text_blocks = [b for b in resp.content if b.type == "text"]
             tool_blocks = [b for b in resp.content if b.type == "tool_use"]
+            logger.info("_agent_turn round %d: tools=%s", round_num, [b.name for b in tool_blocks])
 
             if not tool_blocks:
                 # Pure text response — return it
