@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { forgeApi, simApi, streamForgeMessage } from '../../api'
 import { useForgeStore } from '../../stores/forgeStore'
 
@@ -182,7 +184,32 @@ export function ForgePage() {
                   ? 'bg-accent/20 text-text-primary'
                   : 'bg-surface border border-border text-text-primary'}`}
               >
-                {msg.content || (msg.streaming ? <span className="text-text-secondary animate-pulse">●</span> : null)}
+                {msg.streaming && !msg.content
+                  ? <span className="text-text-secondary animate-pulse">●</span>
+                  : msg.role === 'assistant'
+                    ? <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          p:      ({children}) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+                          ul:     ({children}) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+                          ol:     ({children}) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+                          li:     ({children}) => <li className="leading-relaxed">{children}</li>,
+                          strong: ({children}) => <strong className="font-semibold text-text-primary">{children}</strong>,
+                          em:     ({children}) => <em className="italic text-text-secondary">{children}</em>,
+                          h1:     ({children}) => <h1 className="text-base font-semibold text-text-primary mt-3 mb-1">{children}</h1>,
+                          h2:     ({children}) => <h2 className="text-sm font-semibold text-text-primary mt-3 mb-1">{children}</h2>,
+                          h3:     ({children}) => <h3 className="text-sm font-medium text-text-primary mt-2 mb-1">{children}</h3>,
+                          code:   ({children, className}) => className
+                            ? <code className="block bg-bg border border-border rounded p-3 text-xs font-mono text-text-secondary my-2 overflow-x-auto whitespace-pre">{children}</code>
+                            : <code className="bg-bg px-1.5 py-0.5 rounded text-xs font-mono text-accent/80">{children}</code>,
+                          blockquote: ({children}) => <blockquote className="border-l-2 border-accent/40 pl-3 text-text-secondary italic my-2">{children}</blockquote>,
+                          hr:     () => <hr className="border-border my-3" />,
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                    : msg.content
+                }
               </div>
             </div>
           ))}
