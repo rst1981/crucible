@@ -572,13 +572,12 @@ Goal: a working simulation engine with the Hormuz scenario running inside the Cr
 - [x] **`forge/theory_builder.py`** — Classifies arXiv/SSRN papers for implementable models; generates TheoryBase subclass via Claude; smoke tests; queues in `data/theories/pending/`
 - [x] **`core/theories/discovered/`** — Hot-loadable namespace for approved discovered theories; scanned by `_autodiscover()` at startup
 - [x] **`core/theories/__init__.py`** — `load_theory_file(path)` for runtime hot-loading of approved theories without server restart
-- [ ] **`scenarios/hormuz/`** — Full port from `d:/dev/hormuz-sim-dashboard`:
-  - [ ] `params.py` — all 18 agent configs + Richardson parameters
-  - [ ] `agents/` — 18 BDI agents (Iran, US, Saudi, shipping actors, etc.)
-  - [ ] `theories.py` — Richardson + Wittman-Zartman + Fearon wired
-  - [ ] `run.py` — entry point
-- [ ] **Smoke test**: `python scenarios/hormuz/run.py` runs 10 ticks without error
-- [ ] **`core/snapshot.py`** — named snapshot save/load (JSON, APScheduler daily trigger)
+- [x] **`scenarios/hormuz/`** — 18-actor Strait of Hormuz escalation scenario (Jan 2025 – Dec 2026):
+  - [x] `params.py` — 18 actor configs, Richardson + Fearon + Wittman-Zartman + SIR + Keynesian + Porter parameters, 10-shock schedule
+  - [x] `agents/` — 18 DefaultBDIAgent actors: 9 state (Iran, US, Gulf states, UK, Russia, China), 3 importers (Japan, Korea, India), OPEC, 5 commercial (oil majors, tanker operators, marine insurers, commodity traders, shipping logistics)
+  - [x] `run_simulation.py` — SimSpec-driven entry point; produces `results.json` with 10 outcome metrics
+- [x] **Smoke test**: `python scenarios/hormuz/run_simulation.py --ticks 10` passes (18 actors, 6 theories, 10 ticks)
+- [x] **`core/snapshot.py`** — `SnapshotStore`: save/load/list named snapshots as JSON; `start_auto_save()` via APScheduler background thread
 
 ---
 

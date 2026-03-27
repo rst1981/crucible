@@ -1,0 +1,1743 @@
+{
+  "scenario_id": "hormuz",
+  "total_ticks": 24,
+  "tick_unit": "month",
+  "n_actors": 18,
+  "n_theories": 6,
+  "series": {
+    "global__oil_price": [
+      {
+        "tick": 0,
+        "value": 0.68
+      },
+      {
+        "tick": 1,
+        "value": 0.68
+      },
+      {
+        "tick": 2,
+        "value": 0.8
+      },
+      {
+        "tick": 3,
+        "value": 0.8
+      },
+      {
+        "tick": 4,
+        "value": 0.8
+      },
+      {
+        "tick": 5,
+        "value": 0.9500000000000001
+      },
+      {
+        "tick": 6,
+        "value": 0.9500000000000001
+      },
+      {
+        "tick": 7,
+        "value": 0.9500000000000001
+      },
+      {
+        "tick": 8,
+        "value": 0.9500000000000001
+      },
+      {
+        "tick": 9,
+        "value": 0.9
+      },
+      {
+        "tick": 10,
+        "value": 0.9
+      },
+      {
+        "tick": 11,
+        "value": 0.9
+      },
+      {
+        "tick": 12,
+        "value": 0.9
+      },
+      {
+        "tick": 13,
+        "value": 0.9
+      },
+      {
+        "tick": 14,
+        "value": 0.9
+      },
+      {
+        "tick": 15,
+        "value": 0.9
+      },
+      {
+        "tick": 16,
+        "value": 0.8
+      },
+      {
+        "tick": 17,
+        "value": 0.8
+      },
+      {
+        "tick": 18,
+        "value": 0.8
+      },
+      {
+        "tick": 19,
+        "value": 0.68
+      },
+      {
+        "tick": 20,
+        "value": 0.68
+      },
+      {
+        "tick": 21,
+        "value": 0.68
+      },
+      {
+        "tick": 22,
+        "value": 0.68
+      },
+      {
+        "tick": 23,
+        "value": 0.68
+      }
+    ],
+    "strait__shipping_disruption": [
+      {
+        "tick": 0,
+        "value": 0.08
+      },
+      {
+        "tick": 1,
+        "value": 0.08
+      },
+      {
+        "tick": 2,
+        "value": 0.33
+      },
+      {
+        "tick": 3,
+        "value": 0.33
+      },
+      {
+        "tick": 4,
+        "value": 0.33
+      },
+      {
+        "tick": 5,
+        "value": 0.63
+      },
+      {
+        "tick": 6,
+        "value": 0.63
+      },
+      {
+        "tick": 7,
+        "value": 0.63
+      },
+      {
+        "tick": 8,
+        "value": 0.63
+      },
+      {
+        "tick": 9,
+        "value": 0.63
+      },
+      {
+        "tick": 10,
+        "value": 0.63
+      },
+      {
+        "tick": 11,
+        "value": 0.63
+      },
+      {
+        "tick": 12,
+        "value": 0.63
+      },
+      {
+        "tick": 13,
+        "value": 0.63
+      },
+      {
+        "tick": 14,
+        "value": 0.63
+      },
+      {
+        "tick": 15,
+        "value": 0.63
+      },
+      {
+        "tick": 16,
+        "value": 0.43
+      },
+      {
+        "tick": 17,
+        "value": 0.43
+      },
+      {
+        "tick": 18,
+        "value": 0.43
+      },
+      {
+        "tick": 19,
+        "value": 0.13
+      },
+      {
+        "tick": 20,
+        "value": 0.13
+      },
+      {
+        "tick": 21,
+        "value": 0.13
+      },
+      {
+        "tick": 22,
+        "value": 0.0
+      },
+      {
+        "tick": 23,
+        "value": 0.0
+      }
+    ],
+    "iran__military_readiness": [
+      {
+        "tick": 0,
+        "value": 0.6339166666666667
+      },
+      {
+        "tick": 1,
+        "value": 0.6475753472222222
+      },
+      {
+        "tick": 2,
+        "value": 0.6609881322337963
+      },
+      {
+        "tick": 3,
+        "value": 0.6770832807496624
+      },
+      {
+        "tick": 4,
+        "value": 0.6928458660802519
+      },
+      {
+        "tick": 5,
+        "value": 0.7862911536416299
+      },
+      {
+        "tick": 6,
+        "value": 0.7995226675489842
+      },
+      {
+        "tick": 7,
+        "value": 0.8148840918989865
+      },
+      {
+        "tick": 8,
+        "value": 0.8299645188545355
+      },
+      {
+        "tick": 9,
+        "value": 0.8447771527318727
+      },
+      {
+        "tick": 10,
+        "value": 0.859334653901111
+      },
+      {
+        "tick": 11,
+        "value": 0.8736491614766299
+      },
+      {
+        "tick": 12,
+        "value": 0.8876412657730475
+      },
+      {
+        "tick": 13,
+        "value": 0.8525335674620546
+      },
+      {
+        "tick": 14,
+        "value": 0.8670535616088365
+      },
+      {
+        "tick": 15,
+        "value": 0.881210555901949
+      },
+      {
+        "tick": 16,
+        "value": 0.8950136253377335
+      },
+      {
+        "tick": 17,
+        "value": 0.9084716180376236
+      },
+      {
+        "tick": 18,
+        "value": 0.9215931609200163
+      },
+      {
+        "tick": 19,
+        "value": 0.8368866652303493
+      },
+      {
+        "tick": 20,
+        "value": 0.8517978319329239
+      },
+      {
+        "tick": 21,
+        "value": 0.8663362194679342
+      },
+      {
+        "tick": 22,
+        "value": 0.8805111473145691
+      },
+      {
+        "tick": 23,
+        "value": 0.8943317019650382
+      }
+    ],
+    "us__military_readiness": [
+      {
+        "tick": 0,
+        "value": 0.7830833333333334
+      },
+      {
+        "tick": 1,
+        "value": 0.7863600694444445
+      },
+      {
+        "tick": 2,
+        "value": 0.7898234910300926
+      },
+      {
+        "tick": 3,
+        "value": 0.8922171662627797
+      },
+      {
+        "tick": 4,
+        "value": 0.8948491730303226
+      },
+      {
+        "tick": 5,
+        "value": 0.8990443228021144
+      },
+      {
+        "tick": 6,
+        "value": 0.9034111213277818
+      },
+      {
+        "tick": 7,
+        "value": 0.9869438601036675
+      },
+      {
+        "tick": 8,
+        "value": 0.9906884633840215
+      },
+      {
+        "tick": 9,
+        "value": 0.9946375995726302
+      },
+      {
+        "tick": 10,
+        "value": 0.9987842487901702
+      },
+      {
+        "tick": 11,
+        "value": 1.0
+      },
+      {
+        "tick": 12,
+        "value": 1.0
+      },
+      {
+        "tick": 13,
+        "value": 1.0
+      },
+      {
+        "tick": 14,
+        "value": 1.0
+      },
+      {
+        "tick": 15,
+        "value": 1.0
+      },
+      {
+        "tick": 16,
+        "value": 1.0
+      },
+      {
+        "tick": 17,
+        "value": 1.0
+      },
+      {
+        "tick": 18,
+        "value": 1.0
+      },
+      {
+        "tick": 19,
+        "value": 1.0
+      },
+      {
+        "tick": 20,
+        "value": 1.0
+      },
+      {
+        "tick": 21,
+        "value": 1.0
+      },
+      {
+        "tick": 22,
+        "value": 1.0
+      },
+      {
+        "tick": 23,
+        "value": 1.0
+      }
+    ],
+    "fearon__conflict_probability": [
+      {
+        "tick": 0,
+        "value": 1.0
+      },
+      {
+        "tick": 1,
+        "value": 0.405
+      },
+      {
+        "tick": 2,
+        "value": 0.3645
+      },
+      {
+        "tick": 3,
+        "value": 0.32804999999999995
+      },
+      {
+        "tick": 4,
+        "value": 0.295245
+      },
+      {
+        "tick": 5,
+        "value": 0.26572049999999997
+      },
+      {
+        "tick": 6,
+        "value": 0.23914844999999996
+      },
+      {
+        "tick": 7,
+        "value": 0.21523360499999994
+      },
+      {
+        "tick": 8,
+        "value": 0.19371024449999996
+      },
+      {
+        "tick": 9,
+        "value": 0.17433922004999997
+      },
+      {
+        "tick": 10,
+        "value": 0.15690529804499997
+      },
+      {
+        "tick": 11,
+        "value": 0.1412147682405
+      },
+      {
+        "tick": 12,
+        "value": 0.12709329141644998
+      },
+      {
+        "tick": 13,
+        "value": 0.11438396227480496
+      },
+      {
+        "tick": 14,
+        "value": 0.10294556604732447
+      },
+      {
+        "tick": 15,
+        "value": 0.09265100944259202
+      },
+      {
+        "tick": 16,
+        "value": 0.08338590849833283
+      },
+      {
+        "tick": 17,
+        "value": 0.07504731764849953
+      },
+      {
+        "tick": 18,
+        "value": 0.06754258588364959
+      },
+      {
+        "tick": 19,
+        "value": 0.060788327295284605
+      },
+      {
+        "tick": 20,
+        "value": 0.054709494565756134
+      },
+      {
+        "tick": 21,
+        "value": 0.04923854510918052
+      },
+      {
+        "tick": 22,
+        "value": 0.044314690598262485
+      },
+      {
+        "tick": 23,
+        "value": 0.039883221538436264
+      }
+    ],
+    "zartman__ripe_moment": [
+      {
+        "tick": 0,
+        "value": 0.0
+      },
+      {
+        "tick": 1,
+        "value": 0.0
+      },
+      {
+        "tick": 2,
+        "value": 0.0
+      },
+      {
+        "tick": 3,
+        "value": 0.0
+      },
+      {
+        "tick": 4,
+        "value": 0.0
+      },
+      {
+        "tick": 5,
+        "value": 0.0
+      },
+      {
+        "tick": 6,
+        "value": 0.0
+      },
+      {
+        "tick": 7,
+        "value": 0.0
+      },
+      {
+        "tick": 8,
+        "value": 0.0
+      },
+      {
+        "tick": 9,
+        "value": 0.0
+      },
+      {
+        "tick": 10,
+        "value": 0.0
+      },
+      {
+        "tick": 11,
+        "value": 0.0
+      },
+      {
+        "tick": 12,
+        "value": 0.0
+      },
+      {
+        "tick": 13,
+        "value": 0.0
+      },
+      {
+        "tick": 14,
+        "value": 0.0
+      },
+      {
+        "tick": 15,
+        "value": 0.0
+      },
+      {
+        "tick": 16,
+        "value": 0.0
+      },
+      {
+        "tick": 17,
+        "value": 0.0
+      },
+      {
+        "tick": 18,
+        "value": 0.0
+      },
+      {
+        "tick": 19,
+        "value": 0.0
+      },
+      {
+        "tick": 20,
+        "value": 0.0
+      },
+      {
+        "tick": 21,
+        "value": 0.0
+      },
+      {
+        "tick": 22,
+        "value": 0.0
+      },
+      {
+        "tick": 23,
+        "value": 0.0
+      }
+    ],
+    "global__negotiation_progress": [
+      {
+        "tick": 0,
+        "value": 0.0
+      },
+      {
+        "tick": 1,
+        "value": 0.0
+      },
+      {
+        "tick": 2,
+        "value": 0.0
+      },
+      {
+        "tick": 3,
+        "value": 0.0
+      },
+      {
+        "tick": 4,
+        "value": 0.0
+      },
+      {
+        "tick": 5,
+        "value": 0.0
+      },
+      {
+        "tick": 6,
+        "value": 0.0
+      },
+      {
+        "tick": 7,
+        "value": 0.0
+      },
+      {
+        "tick": 8,
+        "value": 0.0
+      },
+      {
+        "tick": 9,
+        "value": 0.0
+      },
+      {
+        "tick": 10,
+        "value": 0.0
+      },
+      {
+        "tick": 11,
+        "value": 0.15
+      },
+      {
+        "tick": 12,
+        "value": 0.15
+      },
+      {
+        "tick": 13,
+        "value": 0.35
+      },
+      {
+        "tick": 14,
+        "value": 0.35
+      },
+      {
+        "tick": 15,
+        "value": 0.35
+      },
+      {
+        "tick": 16,
+        "value": 0.6
+      },
+      {
+        "tick": 17,
+        "value": 0.6
+      },
+      {
+        "tick": 18,
+        "value": 0.6
+      },
+      {
+        "tick": 19,
+        "value": 0.6
+      },
+      {
+        "tick": 20,
+        "value": 0.6
+      },
+      {
+        "tick": 21,
+        "value": 0.6
+      },
+      {
+        "tick": 22,
+        "value": 0.6
+      },
+      {
+        "tick": 23,
+        "value": 0.6
+      }
+    ],
+    "economic__infected": [
+      {
+        "tick": 0,
+        "value": 0.05062499999999999
+      },
+      {
+        "tick": 1,
+        "value": 0.051256801757812505
+      },
+      {
+        "tick": 2,
+        "value": 0.05189545335458249
+      },
+      {
+        "tick": 3,
+        "value": 0.0525410025233716
+      },
+      {
+        "tick": 4,
+        "value": 0.053193496626542366
+      },
+      {
+        "tick": 5,
+        "value": 0.05401118368613234
+      },
+      {
+        "tick": 6,
+        "value": 0.054839915274003066
+      },
+      {
+        "tick": 7,
+        "value": 0.055679792584119495
+      },
+      {
+        "tick": 8,
+        "value": 0.05653091618654382
+      },
+      {
+        "tick": 9,
+        "value": 0.057329060227215935
+      },
+      {
+        "tick": 10,
+        "value": 0.058136934925270396
+      },
+      {
+        "tick": 11,
+        "value": 0.05895461433485994
+      },
+      {
+        "tick": 12,
+        "value": 0.05978217173645078
+      },
+      {
+        "tick": 13,
+        "value": 0.060619679587547444
+      },
+      {
+        "tick": 14,
+        "value": 0.06146720947236968
+      },
+      {
+        "tick": 15,
+        "value": 0.06232483205048411
+      },
+      {
+        "tick": 16,
+        "value": 0.06319261700439407
+      },
+      {
+        "tick": 17,
+        "value": 0.06407063298609271
+      },
+      {
+        "tick": 18,
+        "value": 0.06495894756258536
+      },
+      {
+        "tick": 19,
+        "value": 0.06574097846711394
+      },
+      {
+        "tick": 20,
+        "value": 0.06653075993039494
+      },
+      {
+        "tick": 21,
+        "value": 0.06732832730557618
+      },
+      {
+        "tick": 22,
+        "value": 0.06813371501183045
+      },
+      {
+        "tick": 23,
+        "value": 0.06894695650210392
+      }
+    ],
+    "global__economic_stress": [
+      {
+        "tick": 0,
+        "value": 0.3
+      },
+      {
+        "tick": 1,
+        "value": 0.3
+      },
+      {
+        "tick": 2,
+        "value": 0.4
+      },
+      {
+        "tick": 3,
+        "value": 0.4
+      },
+      {
+        "tick": 4,
+        "value": 0.4
+      },
+      {
+        "tick": 5,
+        "value": 0.55
+      },
+      {
+        "tick": 6,
+        "value": 0.55
+      },
+      {
+        "tick": 7,
+        "value": 0.55
+      },
+      {
+        "tick": 8,
+        "value": 0.55
+      },
+      {
+        "tick": 9,
+        "value": 0.55
+      },
+      {
+        "tick": 10,
+        "value": 0.55
+      },
+      {
+        "tick": 11,
+        "value": 0.55
+      },
+      {
+        "tick": 12,
+        "value": 0.55
+      },
+      {
+        "tick": 13,
+        "value": 0.55
+      },
+      {
+        "tick": 14,
+        "value": 0.55
+      },
+      {
+        "tick": 15,
+        "value": 0.55
+      },
+      {
+        "tick": 16,
+        "value": 0.55
+      },
+      {
+        "tick": 17,
+        "value": 0.55
+      },
+      {
+        "tick": 18,
+        "value": 0.55
+      },
+      {
+        "tick": 19,
+        "value": 0.55
+      },
+      {
+        "tick": 20,
+        "value": 0.55
+      },
+      {
+        "tick": 21,
+        "value": 0.55
+      },
+      {
+        "tick": 22,
+        "value": 0.45000000000000007
+      },
+      {
+        "tick": 23,
+        "value": 0.45000000000000007
+      }
+    ],
+    "global__trade_volume": [
+      {
+        "tick": 0,
+        "value": 0.72
+      },
+      {
+        "tick": 1,
+        "value": 0.72
+      },
+      {
+        "tick": 2,
+        "value": 0.57
+      },
+      {
+        "tick": 3,
+        "value": 0.57
+      },
+      {
+        "tick": 4,
+        "value": 0.57
+      },
+      {
+        "tick": 5,
+        "value": 0.36999999999999994
+      },
+      {
+        "tick": 6,
+        "value": 0.36999999999999994
+      },
+      {
+        "tick": 7,
+        "value": 0.36999999999999994
+      },
+      {
+        "tick": 8,
+        "value": 0.36999999999999994
+      },
+      {
+        "tick": 9,
+        "value": 0.41999999999999993
+      },
+      {
+        "tick": 10,
+        "value": 0.41999999999999993
+      },
+      {
+        "tick": 11,
+        "value": 0.41999999999999993
+      },
+      {
+        "tick": 12,
+        "value": 0.41999999999999993
+      },
+      {
+        "tick": 13,
+        "value": 0.41999999999999993
+      },
+      {
+        "tick": 14,
+        "value": 0.41999999999999993
+      },
+      {
+        "tick": 15,
+        "value": 0.41999999999999993
+      },
+      {
+        "tick": 16,
+        "value": 0.41999999999999993
+      },
+      {
+        "tick": 17,
+        "value": 0.41999999999999993
+      },
+      {
+        "tick": 18,
+        "value": 0.41999999999999993
+      },
+      {
+        "tick": 19,
+        "value": 0.6699999999999999
+      },
+      {
+        "tick": 20,
+        "value": 0.6699999999999999
+      },
+      {
+        "tick": 21,
+        "value": 0.6699999999999999
+      },
+      {
+        "tick": 22,
+        "value": 0.82
+      },
+      {
+        "tick": 23,
+        "value": 0.82
+      }
+    ]
+  },
+  "final_env": {
+    "iran__military_readiness": 0.8943317019650382,
+    "us__military_readiness": 1.0,
+    "saudi__military_readiness": 0.55,
+    "uk__military_readiness": 0.52,
+    "global__oil_price": 0.68,
+    "global__trade_volume": 0.82,
+    "strait__shipping_disruption": 0.0,
+    "global__economic_stress": 0.45000000000000007,
+    "economic__susceptible": 0.8916587498805941,
+    "economic__infected": 0.06894695650210392,
+    "economic__recovered": 0.039394293617301984,
+    "iran__economic_pressure": 0.7000000000000001,
+    "iran__domestic_stability": 0.32,
+    "global__urgency_factor": 0.5,
+    "zartman__mediator_present": 1.0,
+    "global__negotiation_progress": 0.6,
+    "porter__supplier_power": 0.43928390704036097,
+    "porter__buyer_power": 0.3214321859192781,
+    "porter__rivalry": 0.35,
+    "porter__substitutes": 0.25,
+    "porter__entry_barriers": 0.6,
+    "richardson__escalation_index": 0.9471658509825192,
+    "richardson__stable": 0.0,
+    "fearon__win_prob_a": 0.5,
+    "fearon__win_prob_b_estimate": 0.46011677846156374,
+    "fearon__war_cost_a": 0.0,
+    "fearon__war_cost_b": 0.0,
+    "fearon__conflict_probability": 0.039883221538436264,
+    "fearon__settlement_range_width": 0.0,
+    "zartman__eu_war_a": 0.5,
+    "zartman__eu_war_b": 0.5,
+    "zartman__mhs": 0.0,
+    "zartman__ripe_moment": 0.0,
+    "zartman__negotiation_probability": 0.05,
+    "zartman__stalemate_duration": 0.0,
+    "economic__r_effective": 0.2786433593376857,
+    "economic__active_contagion": 0.0,
+    "keynesian__gdp_gap": 0.0,
+    "keynesian__output_multiplier": 0.0,
+    "porter__competitive_intensity": 0.0,
+    "saudi_arabia__military_readiness": 0.55,
+    "uae__military_readiness": 0.45,
+    "qatar__military_readiness": 0.35,
+    "kuwait__military_readiness": 0.3,
+    "united_kingdom__military_readiness": 0.4,
+    "russia__military_readiness": 0.7,
+    "china__military_readiness": 0.65,
+    "keynesian__gdp_normalized": 0.4815190793296315,
+    "keynesian__fiscal_shock_pending": 0.4878572550345844,
+    "keynesian__multiplier": 0.5390254420008623,
+    "keynesian__unemployment": 0.0684809206703685,
+    "keynesian__mpc": 0.72,
+    "porter__barriers_to_entry": 0.019999999999999827,
+    "porter__substitute_threat": 0.3,
+    "porter__rivalry_intensity": 0.5063005904093387,
+    "porter__profitability": 0.20659666332620447,
+    "porter__capacity_investment": 0.0
+  },
+  "snapshots": [
+    {
+      "tick": 2,
+      "label": "auto_tick_2",
+      "env": {
+        "iran__military_readiness": 0.6609881322337963,
+        "us__military_readiness": 0.7898234910300926,
+        "saudi__military_readiness": 0.55,
+        "uk__military_readiness": 0.4,
+        "global__oil_price": 0.8,
+        "global__trade_volume": 0.57,
+        "strait__shipping_disruption": 0.33,
+        "global__economic_stress": 0.4,
+        "economic__susceptible": 0.9170920013003655,
+        "economic__infected": 0.05189545335458249,
+        "economic__recovered": 0.031012545345052083,
+        "iran__economic_pressure": 0.75,
+        "iran__domestic_stability": 0.4,
+        "global__urgency_factor": 0.2,
+        "zartman__mediator_present": 0.0,
+        "global__negotiation_progress": 0.0,
+        "porter__supplier_power": 0.44851494999999997,
+        "porter__buyer_power": 0.30297009999999996,
+        "porter__rivalry": 0.35,
+        "porter__substitutes": 0.25,
+        "porter__entry_barriers": 0.6,
+        "richardson__escalation_index": 0.7254058116319444,
+        "richardson__stable": 0.0,
+        "fearon__win_prob_a": 0.5,
+        "fearon__win_prob_b_estimate": 0.1355,
+        "fearon__war_cost_a": 0.0,
+        "fearon__war_cost_b": 0.0,
+        "fearon__conflict_probability": 0.3645,
+        "fearon__settlement_range_width": 0.0,
+        "zartman__eu_war_a": 0.5,
+        "zartman__eu_war_b": 0.5,
+        "zartman__mhs": 0.0,
+        "zartman__ripe_moment": 0.0,
+        "zartman__negotiation_probability": 0.05,
+        "zartman__stalemate_duration": 0.0,
+        "economic__r_effective": 0.28659125040636424,
+        "economic__active_contagion": 0.0,
+        "keynesian__gdp_gap": 0.0,
+        "keynesian__output_multiplier": 0.0,
+        "porter__competitive_intensity": 0.0,
+        "saudi_arabia__military_readiness": 0.55,
+        "uae__military_readiness": 0.45,
+        "qatar__military_readiness": 0.35,
+        "kuwait__military_readiness": 0.3,
+        "united_kingdom__military_readiness": 0.4,
+        "russia__military_readiness": 0.7,
+        "china__military_readiness": 0.65,
+        "keynesian__gdp_normalized": 0.5,
+        "keynesian__fiscal_shock_pending": 0.5,
+        "keynesian__multiplier": 0.5390254420008623,
+        "keynesian__unemployment": 0.05,
+        "keynesian__mpc": 0.72,
+        "porter__barriers_to_entry": 0.43999999999999995,
+        "porter__substitute_threat": 0.3,
+        "porter__rivalry_intensity": 0.5,
+        "porter__profitability": 0.3147029899999999,
+        "porter__capacity_investment": 0.0
+      }
+    },
+    {
+      "tick": 4,
+      "label": "auto_tick_4",
+      "env": {
+        "iran__military_readiness": 0.6928458660802519,
+        "us__military_readiness": 0.8948491730303226,
+        "saudi__military_readiness": 0.55,
+        "uk__military_readiness": 0.4,
+        "global__oil_price": 0.8,
+        "global__trade_volume": 0.57,
+        "strait__shipping_disruption": 0.33,
+        "global__economic_stress": 0.4,
+        "economic__susceptible": 0.9150977149892192,
+        "economic__infected": 0.053193496626542366,
+        "economic__recovered": 0.03170878838423845,
+        "iran__economic_pressure": 0.8,
+        "iran__domestic_stability": 0.4,
+        "global__urgency_factor": 0.2,
+        "zartman__mediator_present": 0.0,
+        "global__negotiation_progress": 0.0,
+        "porter__supplier_power": 0.447549502495,
+        "porter__buyer_power": 0.30490099500999995,
+        "porter__rivalry": 0.35,
+        "porter__substitutes": 0.25,
+        "porter__entry_barriers": 0.6,
+        "richardson__escalation_index": 0.7938475195552872,
+        "richardson__stable": 0.0,
+        "fearon__win_prob_a": 0.5,
+        "fearon__win_prob_b_estimate": 0.20475500000000002,
+        "fearon__war_cost_a": 0.0,
+        "fearon__war_cost_b": 0.0,
+        "fearon__conflict_probability": 0.295245,
+        "fearon__settlement_range_width": 0.0,
+        "zartman__eu_war_a": 0.5,
+        "zartman__eu_war_b": 0.5,
+        "zartman__mhs": 0.0,
+        "zartman__ripe_moment": 0.0,
+        "zartman__negotiation_probability": 0.05,
+        "zartman__stalemate_duration": 0.0,
+        "economic__r_effective": 0.285968035934131,
+        "economic__active_contagion": 0.0,
+        "keynesian__gdp_gap": 0.0,
+        "keynesian__output_multiplier": 0.0,
+        "porter__competitive_intensity": 0.0,
+        "saudi_arabia__military_readiness": 0.55,
+        "uae__military_readiness": 0.45,
+        "qatar__military_readiness": 0.35,
+        "kuwait__military_readiness": 0.3,
+        "united_kingdom__military_readiness": 0.4,
+        "russia__military_readiness": 0.7,
+        "china__military_readiness": 0.65,
+        "keynesian__gdp_normalized": 0.5,
+        "keynesian__fiscal_shock_pending": 0.5,
+        "keynesian__multiplier": 0.5390254420008623,
+        "keynesian__unemployment": 0.05,
+        "keynesian__mpc": 0.72,
+        "porter__barriers_to_entry": 0.3999999999999999,
+        "porter__substitute_threat": 0.3,
+        "porter__rivalry_intensity": 0.5,
+        "porter__profitability": 0.30450990049899995,
+        "porter__capacity_investment": 0.0
+      }
+    },
+    {
+      "tick": 6,
+      "label": "auto_tick_6",
+      "env": {
+        "iran__military_readiness": 0.7995226675489842,
+        "us__military_readiness": 0.9034111213277818,
+        "saudi__military_readiness": 0.55,
+        "uk__military_readiness": 0.4,
+        "global__oil_price": 0.9500000000000001,
+        "global__trade_volume": 0.36999999999999994,
+        "strait__shipping_disruption": 0.63,
+        "global__economic_stress": 0.55,
+        "economic__susceptible": 0.9127365984730073,
+        "economic__infected": 0.054839915274003066,
+        "economic__recovered": 0.03242348625298961,
+        "iran__economic_pressure": 0.8,
+        "iran__domestic_stability": 0.4,
+        "global__urgency_factor": 0.2,
+        "zartman__mediator_present": 0.0,
+        "global__negotiation_progress": 0.0,
+        "porter__supplier_power": 0.4466032673953495,
+        "porter__buyer_power": 0.30679346520930095,
+        "porter__rivalry": 0.35,
+        "porter__substitutes": 0.25,
+        "porter__entry_barriers": 0.6,
+        "richardson__escalation_index": 0.851466894438383,
+        "richardson__stable": 0.0,
+        "fearon__win_prob_a": 0.5,
+        "fearon__win_prob_b_estimate": 0.26085155000000004,
+        "fearon__war_cost_a": 0.0,
+        "fearon__war_cost_b": 0.0,
+        "fearon__conflict_probability": 0.23914844999999996,
+        "fearon__settlement_range_width": 0.0,
+        "zartman__eu_war_a": 0.5,
+        "zartman__eu_war_b": 0.5,
+        "zartman__mhs": 0.0,
+        "zartman__ripe_moment": 0.0,
+        "zartman__negotiation_probability": 0.05,
+        "zartman__stalemate_duration": 0.0,
+        "economic__r_effective": 0.3297260961983739,
+        "economic__active_contagion": 0.0,
+        "keynesian__gdp_gap": 0.0,
+        "keynesian__output_multiplier": 0.0,
+        "porter__competitive_intensity": 0.0,
+        "saudi_arabia__military_readiness": 0.55,
+        "uae__military_readiness": 0.45,
+        "qatar__military_readiness": 0.35,
+        "kuwait__military_readiness": 0.3,
+        "united_kingdom__military_readiness": 0.4,
+        "russia__military_readiness": 0.7,
+        "china__military_readiness": 0.65,
+        "keynesian__gdp_normalized": 0.49921427059875745,
+        "keynesian__fiscal_shock_pending": 0.49098877314814815,
+        "keynesian__multiplier": 0.5390254420008623,
+        "keynesian__unemployment": 0.050785729401242555,
+        "keynesian__mpc": 0.72,
+        "porter__barriers_to_entry": 0.3599999999999999,
+        "porter__substitute_threat": 0.3,
+        "porter__rivalry_intensity": 0.5012068126826698,
+        "porter__profitability": 0.29407929094253593,
+        "porter__capacity_investment": 0.0
+      }
+    },
+    {
+      "tick": 8,
+      "label": "auto_tick_8",
+      "env": {
+        "iran__military_readiness": 0.8299645188545355,
+        "us__military_readiness": 0.9906884633840215,
+        "saudi__military_readiness": 0.55,
+        "uk__military_readiness": 0.52,
+        "global__oil_price": 0.9500000000000001,
+        "global__trade_volume": 0.36999999999999994,
+        "strait__shipping_disruption": 0.63,
+        "global__economic_stress": 0.55,
+        "economic__susceptible": 0.9103087995080791,
+        "economic__infected": 0.05653091618654382,
+        "economic__recovered": 0.033160284305377104,
+        "iran__economic_pressure": 0.8,
+        "iran__domestic_stability": 0.32,
+        "global__urgency_factor": 0.2,
+        "zartman__mediator_present": 0.0,
+        "global__negotiation_progress": 0.0,
+        "porter__supplier_power": 0.44567586237418205,
+        "porter__buyer_power": 0.3086482752516359,
+        "porter__rivalry": 0.35,
+        "porter__substitutes": 0.25,
+        "porter__entry_barriers": 0.6,
+        "richardson__escalation_index": 0.9103264911192785,
+        "richardson__stable": 0.0,
+        "fearon__win_prob_a": 0.5,
+        "fearon__win_prob_b_estimate": 0.30628975550000004,
+        "fearon__war_cost_a": 0.0,
+        "fearon__war_cost_b": 0.0,
+        "fearon__conflict_probability": 0.19371024449999996,
+        "fearon__settlement_range_width": 0.0,
+        "zartman__eu_war_a": 0.5,
+        "zartman__eu_war_b": 0.5,
+        "zartman__mhs": 0.0,
+        "zartman__ripe_moment": 0.0,
+        "zartman__negotiation_probability": 0.05,
+        "zartman__stalemate_duration": 0.0,
+        "economic__r_effective": 0.32884905382229357,
+        "economic__active_contagion": 0.0,
+        "keynesian__gdp_gap": 0.0,
+        "keynesian__output_multiplier": 0.0,
+        "porter__competitive_intensity": 0.0,
+        "saudi_arabia__military_readiness": 0.55,
+        "uae__military_readiness": 0.45,
+        "qatar__military_readiness": 0.35,
+        "kuwait__military_readiness": 0.3,
+        "united_kingdom__military_readiness": 0.4,
+        "russia__military_readiness": 0.7,
+        "china__military_readiness": 0.65,
+        "keynesian__gdp_normalized": 0.49757473921871476,
+        "keynesian__fiscal_shock_pending": 0.48395751308513374,
+        "keynesian__multiplier": 0.5390254420008623,
+        "keynesian__unemployment": 0.052425260781285246,
+        "keynesian__mpc": 0.72,
+        "porter__barriers_to_entry": 0.31999999999999984,
+        "porter__substitute_threat": 0.3,
+        "porter__rivalry_intensity": 0.5024642454899875,
+        "porter__profitability": 0.28364232337683887,
+        "porter__capacity_investment": 0.0
+      }
+    },
+    {
+      "tick": 10,
+      "label": "auto_tick_10",
+      "env": {
+        "iran__military_readiness": 0.859334653901111,
+        "us__military_readiness": 0.9987842487901702,
+        "saudi__military_readiness": 0.55,
+        "uk__military_readiness": 0.52,
+        "global__oil_price": 0.9,
+        "global__trade_volume": 0.41999999999999993,
+        "strait__shipping_disruption": 0.63,
+        "global__economic_stress": 0.55,
+        "economic__susceptible": 0.9079437142599275,
+        "economic__infected": 0.058136934925270396,
+        "economic__recovered": 0.03391935081480218,
+        "iran__economic_pressure": 0.8,
+        "iran__domestic_stability": 0.32,
+        "global__urgency_factor": 0.2,
+        "zartman__mediator_present": 0.0,
+        "global__negotiation_progress": 0.0,
+        "porter__supplier_power": 0.44476691271293584,
+        "porter__buyer_power": 0.31046617457412834,
+        "porter__rivalry": 0.35,
+        "porter__substitutes": 0.25,
+        "porter__entry_barriers": 0.6,
+        "richardson__escalation_index": 0.9290594513456406,
+        "richardson__stable": 0.0,
+        "fearon__win_prob_a": 0.5,
+        "fearon__win_prob_b_estimate": 0.343094701955,
+        "fearon__war_cost_a": 0.0,
+        "fearon__war_cost_b": 0.0,
+        "fearon__conflict_probability": 0.15690529804499997,
+        "fearon__settlement_range_width": 0.0,
+        "zartman__eu_war_a": 0.5,
+        "zartman__eu_war_b": 0.5,
+        "zartman__mhs": 0.0,
+        "zartman__ripe_moment": 0.0,
+        "zartman__negotiation_probability": 0.05,
+        "zartman__stalemate_duration": 0.0,
+        "economic__r_effective": 0.31097072213402516,
+        "economic__active_contagion": 0.0,
+        "keynesian__gdp_gap": 0.0,
+        "keynesian__output_multiplier": 0.0,
+        "porter__competitive_intensity": 0.0,
+        "saudi_arabia__military_readiness": 0.55,
+        "uae__military_readiness": 0.45,
+        "qatar__military_readiness": 0.35,
+        "kuwait__military_readiness": 0.3,
+        "united_kingdom__military_readiness": 0.4,
+        "russia__military_readiness": 0.7,
+        "china__military_readiness": 0.65,
+        "keynesian__gdp_normalized": 0.49557120874385424,
+        "keynesian__fiscal_shock_pending": 0.4819370335896687,
+        "keynesian__multiplier": 0.5390254420008623,
+        "keynesian__unemployment": 0.05442879125614576,
+        "keynesian__mpc": 0.72,
+        "porter__barriers_to_entry": 0.2799999999999998,
+        "porter__substitute_threat": 0.3,
+        "porter__rivalry_intensity": 0.5026098780025564,
+        "porter__profitability": 0.27343140694207585,
+        "porter__capacity_investment": 0.0
+      }
+    },
+    {
+      "tick": 12,
+      "label": "auto_tick_12",
+      "env": {
+        "iran__military_readiness": 0.8876412657730475,
+        "us__military_readiness": 1.0,
+        "saudi__military_readiness": 0.55,
+        "uk__military_readiness": 0.52,
+        "global__oil_price": 0.9,
+        "global__trade_volume": 0.41999999999999993,
+        "strait__shipping_disruption": 0.63,
+        "global__economic_stress": 0.55,
+        "economic__susceptible": 0.9055178671203461,
+        "economic__infected": 0.05978217173645078,
+        "economic__recovered": 0.03469996114320304,
+        "iran__economic_pressure": 0.8,
+        "iran__domestic_stability": 0.32,
+        "global__urgency_factor": 0.5,
+        "zartman__mediator_present": 1.0,
+        "global__negotiation_progress": 0.15,
+        "porter__supplier_power": 0.44387605114994844,
+        "porter__buyer_power": 0.31224789770010314,
+        "porter__rivalry": 0.35,
+        "porter__substitutes": 0.25,
+        "porter__entry_barriers": 0.6,
+        "richardson__escalation_index": 0.9438206328865237,
+        "richardson__stable": 0.0,
+        "fearon__win_prob_a": 0.5,
+        "fearon__win_prob_b_estimate": 0.37290670858355,
+        "fearon__war_cost_a": 0.0,
+        "fearon__war_cost_b": 0.0,
+        "fearon__conflict_probability": 0.12709329141644998,
+        "fearon__settlement_range_width": 0.0,
+        "zartman__eu_war_a": 0.5,
+        "zartman__eu_war_b": 0.5,
+        "zartman__mhs": 0.0,
+        "zartman__ripe_moment": 0.0,
+        "zartman__negotiation_probability": 0.05,
+        "zartman__stalemate_duration": 0.0,
+        "economic__r_effective": 0.3101398694887186,
+        "economic__active_contagion": 0.0,
+        "keynesian__gdp_gap": 0.0,
+        "keynesian__output_multiplier": 0.0,
+        "porter__competitive_intensity": 0.0,
+        "saudi_arabia__military_readiness": 0.55,
+        "uae__military_readiness": 0.45,
+        "qatar__military_readiness": 0.35,
+        "kuwait__military_readiness": 0.3,
+        "united_kingdom__military_readiness": 0.4,
+        "russia__military_readiness": 0.7,
+        "china__military_readiness": 0.65,
+        "keynesian__gdp_normalized": 0.493376240474816,
+        "keynesian__fiscal_shock_pending": 0.48036049833890165,
+        "keynesian__multiplier": 0.5390254420008623,
+        "keynesian__unemployment": 0.05662375952518402,
+        "keynesian__mpc": 0.72,
+        "porter__barriers_to_entry": 0.2399999999999998,
+        "porter__substitute_threat": 0.3,
+        "porter__rivalry_intensity": 0.5028582282485256,
+        "porter__profitability": 0.26320356458028454,
+        "porter__capacity_investment": 0.0
+      }
+    },
+    {
+      "tick": 14,
+      "label": "auto_tick_14",
+      "env": {
+        "iran__military_readiness": 0.8670535616088365,
+        "us__military_readiness": 1.0,
+        "saudi__military_readiness": 0.55,
+        "uk__military_readiness": 0.52,
+        "global__oil_price": 0.9,
+        "global__trade_volume": 0.41999999999999993,
+        "strait__shipping_disruption": 0.63,
+        "global__economic_stress": 0.55,
+        "economic__susceptible": 0.9030301503756006,
+        "economic__infected": 0.06146720947236968,
+        "economic__recovered": 0.0355026401520297,
+        "iran__economic_pressure": 0.8,
+        "iran__domestic_stability": 0.32,
+        "global__urgency_factor": 0.5,
+        "zartman__mediator_present": 1.0,
+        "global__negotiation_progress": 0.35,
+        "porter__supplier_power": 0.44300291773206446,
+        "porter__buyer_power": 0.3139941645358711,
+        "porter__rivalry": 0.35,
+        "porter__substitutes": 0.25,
+        "porter__entry_barriers": 0.6,
+        "richardson__escalation_index": 0.9335267808044183,
+        "richardson__stable": 0.0,
+        "fearon__win_prob_a": 0.5,
+        "fearon__win_prob_b_estimate": 0.39705443395267553,
+        "fearon__war_cost_a": 0.0,
+        "fearon__war_cost_b": 0.0,
+        "fearon__conflict_probability": 0.10294556604732447,
+        "fearon__settlement_range_width": 0.0,
+        "zartman__eu_war_a": 0.5,
+        "zartman__eu_war_b": 0.5,
+        "zartman__mhs": 0.0,
+        "zartman__ripe_moment": 0.0,
+        "zartman__negotiation_probability": 0.05,
+        "zartman__stalemate_duration": 0.0,
+        "economic__r_effective": 0.3092878265036433,
+        "economic__active_contagion": 0.0,
+        "keynesian__gdp_gap": 0.0,
+        "keynesian__output_multiplier": 0.0,
+        "porter__competitive_intensity": 0.0,
+        "saudi_arabia__military_readiness": 0.55,
+        "uae__military_readiness": 0.45,
+        "qatar__military_readiness": 0.35,
+        "kuwait__military_readiness": 0.3,
+        "united_kingdom__military_readiness": 0.4,
+        "russia__military_readiness": 0.7,
+        "china__military_readiness": 0.65,
+        "keynesian__gdp_normalized": 0.4910318975491541,
+        "keynesian__fiscal_shock_pending": 0.47913036291684485,
+        "keynesian__multiplier": 0.5390254420008623,
+        "keynesian__unemployment": 0.0589681024508459,
+        "keynesian__mpc": 0.72,
+        "porter__barriers_to_entry": 0.19999999999999982,
+        "porter__substitute_threat": 0.3,
+        "porter__rivalry_intensity": 0.5032183097573709,
+        "porter__profitability": 0.25295692159493866,
+        "porter__capacity_investment": 0.0
+      }
+    },
+    {
+      "tick": 16,
+      "label": "auto_tick_16",
+      "env": {
+        "iran__military_readiness": 0.8950136253377335,
+        "us__military_readiness": 1.0,
+        "saudi__military_readiness": 0.55,
+        "uk__military_readiness": 0.52,
+        "global__oil_price": 0.8,
+        "global__trade_volume": 0.41999999999999993,
+        "strait__shipping_disruption": 0.43,
+        "global__economic_stress": 0.55,
+        "economic__susceptible": 0.9004794625667573,
+        "economic__infected": 0.06319261700439407,
+        "economic__recovered": 0.03632792042884873,
+        "iran__economic_pressure": 0.8,
+        "iran__domestic_stability": 0.32,
+        "global__urgency_factor": 0.5,
+        "zartman__mediator_present": 1.0,
+        "global__negotiation_progress": 0.6,
+        "porter__supplier_power": 0.4421471596691964,
+        "porter__buyer_power": 0.31570568066160726,
+        "porter__rivalry": 0.35,
+        "porter__substitutes": 0.25,
+        "porter__entry_barriers": 0.6,
+        "richardson__escalation_index": 0.9475068126688668,
+        "richardson__stable": 0.0,
+        "fearon__win_prob_a": 0.5,
+        "fearon__win_prob_b_estimate": 0.41661409150166717,
+        "fearon__war_cost_a": 0.0,
+        "fearon__war_cost_b": 0.0,
+        "fearon__conflict_probability": 0.08338590849833283,
+        "fearon__settlement_range_width": 0.0,
+        "zartman__eu_war_a": 0.5,
+        "zartman__eu_war_b": 0.5,
+        "zartman__mhs": 0.0,
+        "zartman__ripe_moment": 0.0,
+        "zartman__negotiation_probability": 0.05,
+        "zartman__stalemate_duration": 0.0,
+        "economic__r_effective": 0.3084142159291144,
+        "economic__active_contagion": 0.0,
+        "keynesian__gdp_gap": 0.0,
+        "keynesian__output_multiplier": 0.0,
+        "porter__competitive_intensity": 0.0,
+        "saudi_arabia__military_readiness": 0.55,
+        "uae__military_readiness": 0.45,
+        "qatar__military_readiness": 0.35,
+        "kuwait__military_readiness": 0.3,
+        "united_kingdom__military_readiness": 0.4,
+        "russia__military_readiness": 0.7,
+        "china__military_readiness": 0.65,
+        "keynesian__gdp_normalized": 0.48857100089836564,
+        "keynesian__fiscal_shock_pending": 0.4781705155833566,
+        "keynesian__multiplier": 0.5390254420008623,
+        "keynesian__unemployment": 0.061428999101634366,
+        "keynesian__mpc": 0.72,
+        "porter__barriers_to_entry": 0.15999999999999984,
+        "porter__substitute_threat": 0.3,
+        "porter__rivalry_intensity": 0.5036971555858417,
+        "porter__profitability": 0.24269000081667083,
+        "porter__capacity_investment": 0.0
+      }
+    },
+    {
+      "tick": 18,
+      "label": "auto_tick_18",
+      "env": {
+        "iran__military_readiness": 0.9215931609200163,
+        "us__military_readiness": 1.0,
+        "saudi__military_readiness": 0.55,
+        "uk__military_readiness": 0.52,
+        "global__oil_price": 0.8,
+        "global__trade_volume": 0.41999999999999993,
+        "strait__shipping_disruption": 0.43,
+        "global__economic_stress": 0.55,
+        "economic__susceptible": 0.8978647103419627,
+        "economic__infected": 0.06495894756258536,
+        "economic__recovered": 0.037176342095451974,
+        "iran__economic_pressure": 0.8,
+        "iran__domestic_stability": 0.32,
+        "global__urgency_factor": 0.5,
+        "zartman__mediator_present": 1.0,
+        "global__negotiation_progress": 0.6,
+        "porter__supplier_power": 0.44130843119177937,
+        "porter__buyer_power": 0.31738313761644127,
+        "porter__rivalry": 0.35,
+        "porter__substitutes": 0.25,
+        "porter__entry_barriers": 0.6,
+        "richardson__escalation_index": 0.9607965804600082,
+        "richardson__stable": 0.0,
+        "fearon__win_prob_a": 0.5,
+        "fearon__win_prob_b_estimate": 0.4324574141163504,
+        "fearon__war_cost_a": 0.0,
+        "fearon__war_cost_b": 0.0,
+        "fearon__conflict_probability": 0.06754258588364959,
+        "fearon__settlement_range_width": 0.0,
+        "zartman__eu_war_a": 0.5,
+        "zartman__eu_war_b": 0.5,
+        "zartman__mhs": 0.0,
+        "zartman__ripe_moment": 0.0,
+        "zartman__negotiation_probability": 0.05,
+        "zartman__stalemate_duration": 0.0,
+        "economic__r_effective": 0.30751866329212224,
+        "economic__active_contagion": 0.0,
+        "keynesian__gdp_gap": 0.0,
+        "keynesian__output_multiplier": 0.0,
+        "porter__competitive_intensity": 0.0,
+        "saudi_arabia__military_readiness": 0.55,
+        "uae__military_readiness": 0.45,
+        "qatar__military_readiness": 0.35,
+        "kuwait__military_readiness": 0.3,
+        "united_kingdom__military_readiness": 0.4,
+        "russia__military_readiness": 0.7,
+        "china__military_readiness": 0.65,
+        "keynesian__gdp_normalized": 0.4860191599659437,
+        "keynesian__fiscal_shock_pending": 0.47742156803897645,
+        "keynesian__multiplier": 0.5390254420008623,
+        "keynesian__unemployment": 0.06398084003405631,
+        "keynesian__mpc": 0.72,
+        "porter__barriers_to_entry": 0.11999999999999984,
+        "porter__substitute_threat": 0.3,
+        "porter__rivalry_intensity": 0.5043002534718294,
+        "porter__profitability": 0.2324016355439899,
+        "porter__capacity_investment": 0.0
+      }
+    },
+    {
+      "tick": 20,
+      "label": "auto_tick_20",
+      "env": {
+        "iran__military_readiness": 0.8517978319329239,
+        "us__military_readiness": 1.0,
+        "saudi__military_readiness": 0.55,
+        "uk__military_readiness": 0.52,
+        "global__oil_price": 0.68,
+        "global__trade_volume": 0.6699999999999999,
+        "strait__shipping_disruption": 0.13,
+        "global__economic_stress": 0.55,
+        "economic__susceptible": 0.8954215651339551,
+        "economic__infected": 0.06653075993039494,
+        "economic__recovered": 0.038047674935649964,
+        "iran__economic_pressure": 0.8,
+        "iran__domestic_stability": 0.32,
+        "global__urgency_factor": 0.5,
+        "zartman__mediator_present": 1.0,
+        "global__negotiation_progress": 0.6,
+        "porter__supplier_power": 0.440486393411063,
+        "porter__buyer_power": 0.31902721317787414,
+        "porter__rivalry": 0.35,
+        "porter__substitutes": 0.25,
+        "porter__entry_barriers": 0.6,
+        "richardson__escalation_index": 0.9258989159664619,
+        "richardson__stable": 0.0,
+        "fearon__win_prob_a": 0.5,
+        "fearon__win_prob_b_estimate": 0.44529050543424387,
+        "fearon__war_cost_a": 0.0,
+        "fearon__war_cost_b": 0.0,
+        "fearon__conflict_probability": 0.054709494565756134,
+        "fearon__settlement_range_width": 0.0,
+        "zartman__eu_war_a": 0.5,
+        "zartman__eu_war_b": 0.5,
+        "zartman__mhs": 0.0,
+        "zartman__ripe_moment": 0.0,
+        "zartman__negotiation_probability": 0.05,
+        "zartman__stalemate_duration": 0.0,
+        "economic__r_effective": 0.27981923910436096,
+        "economic__active_contagion": 0.0,
+        "keynesian__gdp_gap": 0.0,
+        "keynesian__output_multiplier": 0.0,
+        "porter__competitive_intensity": 0.0,
+        "saudi_arabia__military_readiness": 0.55,
+        "uae__military_readiness": 0.45,
+        "qatar__military_readiness": 0.35,
+        "kuwait__military_readiness": 0.3,
+        "united_kingdom__military_readiness": 0.4,
+        "russia__military_readiness": 0.7,
+        "china__military_readiness": 0.65,
+        "keynesian__gdp_normalized": 0.48387988301692714,
+        "keynesian__fiscal_shock_pending": 0.4823825512837458,
+        "keynesian__multiplier": 0.5390254420008623,
+        "keynesian__unemployment": 0.06612011698307287,
+        "keynesian__mpc": 0.72,
+        "porter__barriers_to_entry": 0.07999999999999984,
+        "porter__substitute_threat": 0.3,
+        "porter__rivalry_intensity": 0.5050276929551563,
+        "porter__profitability": 0.22209174009118118,
+        "porter__capacity_investment": 0.0
+      }
+    },
+    {
+      "tick": 22,
+      "label": "auto_tick_22",
+      "env": {
+        "iran__military_readiness": 0.8805111473145691,
+        "us__military_readiness": 1.0,
+        "saudi__military_readiness": 0.55,
+        "uk__military_readiness": 0.52,
+        "global__oil_price": 0.68,
+        "global__trade_volume": 0.82,
+        "strait__shipping_disruption": 0.0,
+        "global__economic_stress": 0.45000000000000007,
+        "economic__susceptible": 0.8929262161376131,
+        "economic__infected": 0.06813371501183045,
+        "economic__recovered": 0.038940068850556446,
+        "iran__economic_pressure": 0.7000000000000001,
+        "iran__domestic_stability": 0.32,
+        "global__urgency_factor": 0.5,
+        "zartman__mediator_present": 1.0,
+        "global__negotiation_progress": 0.6,
+        "porter__supplier_power": 0.4396807141821828,
+        "porter__buyer_power": 0.3206385716356344,
+        "porter__rivalry": 0.35,
+        "porter__substitutes": 0.25,
+        "porter__entry_barriers": 0.6,
+        "richardson__escalation_index": 0.9402555736572846,
+        "richardson__stable": 0.0,
+        "fearon__win_prob_a": 0.5,
+        "fearon__win_prob_b_estimate": 0.4556853094017375,
+        "fearon__war_cost_a": 0.0,
+        "fearon__war_cost_b": 0.0,
+        "fearon__conflict_probability": 0.044314690598262485,
+        "fearon__settlement_range_width": 0.0,
+        "zartman__eu_war_a": 0.5,
+        "zartman__eu_war_b": 0.5,
+        "zartman__mhs": 0.0,
+        "zartman__ripe_moment": 0.0,
+        "zartman__negotiation_probability": 0.05,
+        "zartman__stalemate_duration": 0.0,
+        "economic__r_effective": 0.2790394425430041,
+        "economic__active_contagion": 0.0,
+        "keynesian__gdp_gap": 0.0,
+        "keynesian__output_multiplier": 0.0,
+        "porter__competitive_intensity": 0.0,
+        "saudi_arabia__military_readiness": 0.55,
+        "uae__military_readiness": 0.45,
+        "qatar__military_readiness": 0.35,
+        "kuwait__military_readiness": 0.3,
+        "united_kingdom__military_readiness": 0.4,
+        "russia__military_readiness": 0.7,
+        "china__military_readiness": 0.65,
+        "keynesian__gdp_normalized": 0.48221065275309727,
+        "keynesian__fiscal_shock_pending": 0.48625349626556724,
+        "keynesian__multiplier": 0.5390254420008623,
+        "keynesian__unemployment": 0.06778934724690273,
+        "keynesian__mpc": 0.72,
+        "porter__barriers_to_entry": 0.03999999999999983,
+        "porter__substitute_threat": 0.3,
+        "porter__rivalry_intensity": 0.5058558567281661,
+        "porter__profitability": 0.2117649714908033,
+        "porter__capacity_investment": 0.0
+      }
+    }
+  ]
+}
