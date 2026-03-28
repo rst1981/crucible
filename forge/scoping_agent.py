@@ -70,7 +70,7 @@ Key rules:
    certainty, use a reasonable default informed by research and flag it
    in the SimSpec metadata.
 4. STRICT TOOL ORDER — follow this exactly, one step per round:
-   a. Run research tools (search_arxiv, search_ssrn, search_news, get_data) in parallel.
+   a. Run research tools (search_arxiv, search_news, get_data) in parallel.
    b. Call update_simspec ONCE with everything learned from research.
    c. Call ask_user for the highest-priority open gap (outcome_focus first, always).
    d. When the user replies, call update_simspec ONCE with their answer, then ask_user for the next gap.
@@ -91,18 +91,6 @@ _TOOLS: list[dict[str, Any]] = [
             "Search arXiv preprints for academic research relevant to the scenario. "
             "Use for theoretical frameworks, empirical studies, domain models."
         ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query":       {"type": "string"},
-                "max_results": {"type": "integer", "default": 5, "maximum": 10},
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "search_ssrn",
-        "description": "Search SSRN for working papers in economics, finance, law, social science.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -1191,10 +1179,13 @@ One note per theory in the same order. Return ONLY valid JSON."""
             return [r.to_context_snippet() for r in results if r.ok], False
 
         if name == "search_fred":
+            series_ids = inputs.get("series_ids", [])
+            results: list = []
             async with httpx.AsyncClient(timeout=15.0) as http:
-                results = await FredAdapter(http).fetch(
-                    " ".join(inputs.get("series_ids", [])), max_results=5
-                )
+                adapter = FredAdapter(http)
+                for sid in series_ids[:5]:
+                    r = await adapter.fetch(sid, max_results=1)
+                    results.extend(r)
             ctx.results.extend(results)
             return [r.to_context_snippet() for r in results if r.ok], False
 
