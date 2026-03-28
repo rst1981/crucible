@@ -447,7 +447,7 @@ Write in a direct, analytical consulting voice. No fluff. Return ONLY valid JSON
         client = Anthropic()
         resp = client.messages.create(
             model=_MODEL,
-            max_tokens=2500,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = resp.content[0].text.strip()
