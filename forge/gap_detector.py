@@ -31,6 +31,19 @@ def detect_gaps(simspec: SimSpec) -> list[SpecGap]:
             priority=0.99,
         ))
 
+    # Theories — ask to give the client agency over theoretical framing.
+    # Always offer "let the model decide empirically" as the default option.
+    # Suppressed if: theories already set, OR user chose empirical mode.
+    if not simspec.theories and not simspec.metadata.get("theories_mode"):
+        gaps.append(SpecGap(
+            field_path="theories",
+            description=(
+                "Should this simulation apply a specific theoretical framework, "
+                "or let the model select theories empirically from research?"
+            ),
+            priority=0.50,
+        ))
+
     if not simspec.domain:
         gaps.append(SpecGap(
             field_path="domain",
@@ -67,7 +80,7 @@ def _merge_gaps(existing: list[SpecGap], new_gaps: list[SpecGap]) -> None:
     Add any new gaps not already tracked. Does not duplicate.
     Mutates `existing` in place.
     """
-    existing_paths = {g.field_path for g in existing if not g.filled}
+    existing_paths = {g.field_path for g in existing}  # include filled — never re-add
     for gap in new_gaps:
         if gap.field_path not in existing_paths:
             existing.append(gap)

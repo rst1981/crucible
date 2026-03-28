@@ -73,6 +73,18 @@ PALETTE = [
 ]
 STYLE = {"dpi": 150, "bbox_inches": "tight"}
 
+THEORY_FEATURE_MAP = {
+    "fearon_bargaining": ["conflict probability", "information asymmetry", "war costs", "power balance", "bargaining range"],
+    "richardson_arms_race": ["military readiness", "escalation index", "arms expenditure", "mutual fatigue"],
+    "wittman_zartman": ["negotiation probability", "ripeness condition", "mediator presence", "stalemate duration"],
+    "keynesian_multiplier": ["gdp gap", "fiscal multiplier", "consumption", "investment demand"],
+    "sir_contagion": ["economic contagion", "trade disruption", "recovery rate", "infected fraction"],
+    "porter_five_forces": ["competitive intensity", "supplier power", "market structure", "entry barriers"],
+    "minsky_instability": ["financial fragility", "debt deflation", "credit spreads", "leverage ratio"],
+    "hotelling_resource": ["resource scarcity", "price trajectory", "extraction constraint", "depletion rate"],
+    "oil_price_shock": ["oil price", "inflation", "recession probability", "demand contraction"],
+}
+
 
 def _apply_rcparams():
     import matplotlib
@@ -138,7 +150,10 @@ def _generate_charts(session: "ForgeSession", charts_dir: pathlib.Path) -> list[
         actors = session.simspec.actors if session.simspec else []
         if actors:
             from collections import Counter
-            role_counts = Counter(a.role for a in actors)
+            role_counts = Counter(
+                (getattr(a, 'role', None) or (getattr(a, 'metadata', None) or {}).get('role') or 'unknown')
+                for a in actors
+            )
             fig, ax = plt.subplots(figsize=(5, 5))
             wedges, texts, autotexts = ax.pie(
                 list(role_counts.values()),
@@ -155,6 +170,75 @@ def _generate_charts(session: "ForgeSession", charts_dir: pathlib.Path) -> list[
             plt.close(fig)
             paths.append(p)
 
+        # Chart 4: Theory-feature matrix heatmap
+        if recs:
+            theory_ids   = [r["theory_id"]    for r in recs]
+            theory_names = [r["display_name"] for r in recs]
+
+            # Collect features in consistent order
+            all_features = []
+            seen = set()
+            for tid in theory_ids:
+                for f in THEORY_FEATURE_MAP.get(tid, []):
+                    if f not in seen:
+                        all_features.append(f)
+                        seen.add(f)
+            all_features = all_features[:14]  # cap columns
+
+            n_t = len(theory_ids)
+            n_f = len(all_features)
+            if n_t > 0 and n_f > 0:
+                cell_w, cell_h = 1.4, 0.55
+                fig_w = max(10, n_f * cell_w + 3)
+                fig_h = max(3,  n_t * cell_h + 2)
+                fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+                ax.set_xlim(-0.5, n_f - 0.5)
+                ax.set_ylim(-0.5, n_t - 0.5)
+                ax.axis("off")
+                fig.patch.set_facecolor("white")
+
+                # Draw cells
+                for ti, tid in enumerate(theory_ids):
+                    color = PALETTE[ti % len(PALETTE)]
+                    mapped = set(THEORY_FEATURE_MAP.get(tid, []))
+                    for fi, feat in enumerate(all_features):
+                        if feat in mapped:
+                            rect = plt.Rectangle((fi - 0.45, ti - 0.40), 0.90, 0.80,
+                                                 color=color, alpha=0.75, zorder=2)
+                            ax.add_patch(rect)
+                            # Checkmark inside
+                            ax.text(fi, ti, "✓", ha="center", va="center",
+                                    fontsize=9, color="white", fontweight="bold", zorder=3)
+                        else:
+                            rect = plt.Rectangle((fi - 0.45, ti - 0.40), 0.90, 0.80,
+                                                 color="#F3F4F6", zorder=1)
+                            ax.add_patch(rect)
+
+                # Theory labels (y-axis, left)
+                for ti, name in enumerate(theory_names):
+                    ax.text(-0.6, ti, name, ha="right", va="center",
+                            fontsize=9, fontweight="bold", color=PALETTE[ti % len(PALETTE)])
+
+                # Feature labels (x-axis, top — rotated)
+                for fi, feat in enumerate(all_features):
+                    ax.text(fi, n_t - 0.3, feat.replace(" ", "\n"),
+                            ha="center", va="bottom", fontsize=7.5, color="#374151", linespacing=1.2)
+
+                # Grid lines
+                for fi in range(-1, n_f):
+                    ax.axvline(fi + 0.5, color="#E5E7EB", linewidth=0.5, zorder=0)
+                for ti in range(-1, n_t):
+                    ax.axhline(ti + 0.5, color="#E5E7EB", linewidth=0.5, zorder=0)
+
+                ax.set_title("Theory Ensemble — Simulation Feature Coverage",
+                             fontweight="bold", pad=16, fontsize=12, loc="left")
+
+                fig.tight_layout(rect=[0.15, 0, 1, 0.88])
+                p = charts_dir / "fig4_theory_feature_map.png"
+                fig.savefig(p, **STYLE)
+                plt.close(fig)
+                paths.append(p)
+
     except Exception as exc:
         logger.warning("Chart generation failed: %s", exc)
 
@@ -162,6 +246,63 @@ def _generate_charts(session: "ForgeSession", charts_dir: pathlib.Path) -> list[
 
 
 # ── Markdown builder ────────────────────────────────────────────────────────
+
+def _theory_cascade(recs: list[dict]) -> str:
+    if not recs:
+        return "*No theories selected.*"
+    if len(recs) == 1:
+        return f"Single module: **{recs[0]['display_name']}** drives all state updates each tick."
+
+    names = [f"**{r['display_name']}**" for r in recs]
+    chain = " → ".join(names)
+    return (
+        f"Theories execute in priority order each tick: {chain}. "
+        f"Each module reads environment state set by prior modules, ensuring consistent "
+        f"causal ordering from {recs[0]['display_name']} (primary driver) through to "
+        f"{recs[-1]['display_name']} (downstream effects)."
+    )
+
+
+def _forward_signals(session: "ForgeSession") -> str:
+    spec = session.simspec
+    ctx  = session.research_context
+    recs = session.recommended_theories
+
+    snippets = "\n".join(
+        r.to_context_snippet() for r in (ctx.results if ctx else [])[:8] if r.ok
+    )[:3000]
+
+    if not snippets:
+        return "*Insufficient research data for forward signal extraction.*"
+
+    prompt = f"""You are a simulation analyst. Based on these research findings, identify 3-5 forward signals relevant to this scenario.
+
+Scenario: {spec.name if spec else 'Unknown'}
+Domain: {spec.domain if spec else 'unknown'}
+Theories: {', '.join(r['theory_id'] for r in recs)}
+
+Research snippets:
+{snippets}
+
+Return a markdown table with columns: Signal | Direction | Confidence | Module
+- Signal: 1 sentence describing an observable trend or event
+- Direction: ↑ (increasing risk/pressure) or ↓ (decreasing) or → (stable/ongoing)
+- Confidence: High / Medium / Low
+- Module: which theory module this signal feeds into (use theory_id)
+
+Return ONLY the markdown table, no other text. Start with the header row."""
+
+    try:
+        client = Anthropic()
+        resp = client.messages.create(
+            model=_MODEL,
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.content[0].text.strip()
+    except Exception:
+        return "| Signal | Direction | Confidence | Module |\n|--------|-----------|------------|--------|\n| Insufficient data for signal extraction | → | Low | — |"
+
 
 def _build_markdown(
     session: "ForgeSession",
@@ -175,7 +316,13 @@ def _build_markdown(
     today = date.today().strftime("%B %d, %Y")
     name  = spec.name if spec else "Unnamed Scenario"
     domain = spec.domain if spec else "—"
-    outcome_focus = (spec.metadata or {}).get("outcome_focus", "—") if spec else "—"
+    raw_focus = (spec.metadata or {}).get("outcome_focus", "—") if spec else "—"
+    # Strip markdown headers, bold, strip leading/trailing whitespace
+    outcome_focus = re.sub(r'^#{1,6}\s*', '', raw_focus, flags=re.MULTILINE)
+    outcome_focus = re.sub(r'\*+', '', outcome_focus).strip()
+    # If it's the agent's empirical selection message, replace with clean text
+    if "empirically" in outcome_focus.lower() and len(outcome_focus) < 120:
+        outcome_focus = "Model-driven — theoretical framework selected empirically from research"
     ticks = spec.timeframe.total_ticks if spec else 0
     tick_unit = spec.timeframe.tick_unit if spec else "month"
     start_date = spec.timeframe.start_date if spec else "—"
@@ -198,17 +345,32 @@ def _build_markdown(
     # Sources
     sources_md = _sources_section(ctx)
 
-    # Chart embeds (absolute paths for weasyprint)
-    chart_embeds = ""
-    chart_labels = [
-        ("fig1_theory_scores.png",    "Figure 1: Theory ensemble relevance scores"),
+    # Theory cascade text
+    cascade_text = _theory_cascade(recs)
+
+    # Forward signals table
+    signals_md = _forward_signals(session)
+
+    # Chart embeds split by section (relative paths from MD file location)
+    chart_embeds_env = ""
+    for fname, caption in [
         ("fig2_initial_conditions.png", "Figure 2: Initial condition calibration"),
-        ("fig3_actor_roles.png",       "Figure 3: Actor composition by role"),
-    ]
-    for fname, caption in chart_labels:
+        ("fig3_actor_roles.png",        "Figure 3: Actor composition by role"),
+    ]:
         p = next((cp for cp in chart_paths if cp.name == fname), None)
         if p:
-            chart_embeds += f"\n![{caption}]({p})\n*{caption}*\n"
+            rel = f"charts/{slug}/{fname}"
+            chart_embeds_env += f"\n![{caption}]({rel})\n*{caption}*\n"
+
+    chart_embeds_theory = ""
+    for fname, caption in [
+        ("fig1_theory_scores.png",      "Figure 1: Theory ensemble relevance scores"),
+        ("fig4_theory_feature_map.png", "Figure 4: Theory ensemble — simulation feature coverage"),
+    ]:
+        p = next((cp for cp in chart_paths if cp.name == fname), None)
+        if p:
+            rel = f"charts/{slug}/{fname}"
+            chart_embeds_theory += f"\n![{caption}]({rel})\n*{caption}*\n"
 
     # Monte Carlo guidance
     domain_mc = {
@@ -232,7 +394,7 @@ def _build_markdown(
 
     doc = f"""# {name} — Scenario Assessment
 
-**Date:** {today} | **Domain:** {domain} | **Ensemble:** {len(recs)}-module | **Generated by:** Crucible Forge
+**Date:** {today} | **Domain:** {domain} | **Ensemble:** {len(recs)}-module | **Horizon:** {ticks} {tick_unit}s | **Generated by:** Crucible Forge
 
 ---
 
@@ -242,7 +404,7 @@ def _build_markdown(
 
 ---
 
-## Scenario Overview
+## Scenario
 
 **Simulation Horizon:** {ticks} {tick_unit}s (starting {start_date})
 **Outcome Focus:** {outcome_focus}
@@ -253,22 +415,33 @@ def _build_markdown(
 
 ### Initial Conditions
 
-{env_md}
+{chart_embeds_env}
 
-{chart_embeds}
+{env_md}
 
 ---
 
-## Theory Ensemble
+## Recommended Theory Stack
 
 {theories_md}
-{custom_note}
+
+### Module Cascade
+
+{cascade_text}
+
+{chart_embeds_theory}
 
 ---
 
 ## Calibration Anchors
 
 {calib_md}
+
+---
+
+## Forward Signals
+
+{signals_md}
 
 ---
 
@@ -280,6 +453,7 @@ def _build_markdown(
 - **Sensitivity parameters:** {sensitivity_params}
 - **Horizon:** {ticks} {tick_unit}s — {"sufficient for short-run dynamics" if ticks <= 12 else "allows full cycle to emerge"}
 - **Deterministic baseline:** Run 1 deterministic pass first to validate cascade, then launch Monte Carlo
+{custom_note}
 
 ---
 
@@ -341,7 +515,7 @@ Write in a direct, analytical consulting voice. No fluff."""
         client = Anthropic()
         resp = client.messages.create(
             model=_MODEL,
-            max_tokens=800,
+            max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = resp.content[0].text.strip()
@@ -350,7 +524,17 @@ Write in a direct, analytical consulting voice. No fluff."""
             if raw.startswith("json"):
                 raw = raw[4:]
         data = json.loads(raw)
-        return data.get("exec_summary", ""), data.get("data_gaps", "")
+        exec_summary = data.get("exec_summary", "")
+        data_gaps_raw = data.get("data_gaps", "")
+        # Haiku sometimes returns data_gaps as a JSON array instead of string
+        if isinstance(data_gaps_raw, list):
+            data_gaps = "\n".join(
+                item if str(item).startswith("-") else f"- {item}"
+                for item in data_gaps_raw
+            )
+        else:
+            data_gaps = data_gaps_raw
+        return exec_summary, data_gaps
     except Exception as exc:
         logger.warning("Prose generation failed: %s", exc)
         spec_name = spec.name if spec else "this scenario"
@@ -365,12 +549,17 @@ Write in a direct, analytical consulting voice. No fluff."""
 def _actors_table(spec: Any) -> str:
     if not spec or not spec.actors:
         return "*No actors defined.*"
-    rows = ["| Actor | Role | Starting Beliefs |", "|-------|------|-----------------|"]
+    rows = ["| Actor | Role | Description | Starting Beliefs |", "|-------|------|-------------|-----------------|"]
     for a in spec.actors:
-        belief_state = (getattr(a, 'metadata', None) or {}).get('belief_state') or {}
-        beliefs = "; ".join(f"{k}={v:.2f}" for k, v in list(belief_state.items())[:3])
-        role = getattr(a, 'role', None) or (getattr(a, 'metadata', None) or {}).get('role', '—')
-        rows.append(f"| {a.name} | {role} | {beliefs or '—'} |")
+        meta = getattr(a, 'metadata', {}) or {}
+        role = meta.get('role', '—')
+        desc = meta.get('description', '—') or '—'
+        belief_state = meta.get('belief_state') or {}
+        beliefs = "; ".join(
+            f"{k}={v:.2f}" if isinstance(v, float) else f"{k}={v}"
+            for k, v in list(belief_state.items())[:3]
+        ) or '—'
+        rows.append(f"| {a.name} | {role} | {desc} | {beliefs} |")
     return "\n".join(rows)
 
 
@@ -388,16 +577,14 @@ def _theories_table(recs: list[dict]) -> str:
     if not recs:
         return "*No theories selected.*"
     rows = [
-        "| Priority | Theory | Score | Application |",
-        "|----------|--------|-------|-------------|",
+        "| # | Theory | Score | Key Mechanism |",
+        "|---|--------|-------|---------------|",
     ]
     for i, r in enumerate(recs):
-        src = " *(new)*" if r.get("source") == "discovered" else ""
         note = r.get("application_note") or r.get("rationale", "—")
-        note = note[:120] + "…" if len(note) > 120 else note
-        rows.append(
-            f"| {i+1} | **{r['display_name']}**{src} | {r['score']:.2f} | {note} |"
-        )
+        note = note[:199] + "…" if len(note) >= 200 else note
+        src = " *(new)*" if r.get("source") == "discovered" else ""
+        rows.append(f"| {i+1} | **{r['display_name']}**{src} | {r['score']:.2f} | {note} |")
     return "\n".join(rows)
 
 
@@ -407,7 +594,16 @@ def _calibration_table(ctx: Any) -> str:
     rows = ["| Parameter | Estimate | Source |", "|-----------|----------|--------|"]
     for k, v in ctx.parameter_estimates.items():
         short = k.replace("_", " ")
-        rows.append(f"| {short} | {v:.3f} | Research extraction |")
+        # Try to find a source that mentioned this parameter
+        source = "Research extraction"
+        for r in (ctx.results or []):
+            raw = getattr(r, 'raw', '') or ''
+            if k.replace('_', ' ') in raw.lower() or k in raw:
+                src_title = getattr(r, 'title', '') or ''
+                if src_title and 'fetch failed' not in src_title.lower():
+                    source = src_title[:50]
+                    break
+        rows.append(f"| {short} | {v:.3f} | {source} |")
     return "\n".join(rows)
 
 
@@ -415,10 +611,20 @@ def _sources_section(ctx: Any) -> str:
     if not ctx or not ctx.results:
         return "*No sources.*"
     lines = []
-    for r in ctx.results[:20]:
-        if hasattr(r, "title") and r.title:
-            url = getattr(r, "url", "")
-            lines.append(f"- {r.title}" + (f" — {url}" if url else ""))
+    seen = set()
+    for r in ctx.results[:30]:
+        title = getattr(r, 'title', '') or ''
+        url = getattr(r, 'url', '') or ''
+        # Skip failed fetches and duplicates
+        if not title or 'fetch failed' in title.lower() or 'error' in title.lower():
+            continue
+        if not getattr(r, 'ok', True):
+            continue
+        key = title[:60]
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(f"- {title}" + (f" — {url}" if url else ""))
     return "\n".join(lines) if lines else "*Sources not recorded.*"
 
 

@@ -74,6 +74,9 @@ Key rules:
    b. Call update_simspec ONCE with everything learned from research.
    c. Call ask_user for the highest-priority open gap (outcome_focus first, always).
    d. When the user replies, call update_simspec ONCE with their answer, then ask_user for the next gap.
+      When recording the theories answer: use patch={"metadata": {"theories_mode": "empirical"}}
+      for empirical selection, or patch={"metadata": {"theories_mode": "<framework name>"}} for
+      a specific framework. NEVER write theories answers into outcome_focus.
    CRITICAL: Never call update_simspec twice in a row. After every update_simspec,
    the very next call MUST be ask_user (unless all gaps are filled, then finalize).
 5. When all critical gaps are filled, call select_theories then finalize.
@@ -176,7 +179,9 @@ _TOOLS: list[dict[str, Any]] = [
                     "description": (
                         "Partial SimSpec fields. Supported keys: "
                         "name, description, domain, initial_environment (dict[str,float]), "
-                        "timeframe_ticks (int), actors (list of {actor_id,name,role})."
+                        "timeframe_ticks (int), actors (list of {actor_id,name,role}), "
+                        "metadata (dict — use theories_mode='empirical' when user chooses "
+                        "empirical theory selection, outcome_focus for the decision focus)."
                     ),
                 },
             },
@@ -693,13 +698,14 @@ Rules:
         )
 
         while not agent_task.done():
-            try:
-                msg = await asyncio.wait_for(asyncio.shield(status_queue.get()), timeout=0.1)
-                yield msg
-            except asyncio.TimeoutError:
-                await asyncio.sleep(0.1)
+            await asyncio.sleep(0.5)
+            while not status_queue.empty():
+                yield status_queue.get_nowait()
 
         next_reply = await agent_task
+        # Drain any remaining status messages
+        while not status_queue.empty():
+            yield status_queue.get_nowait()
 
         if deep_dive_summary:
             yield f"{deep_dive_summary}\n\n---\n\n{next_reply}"
@@ -912,16 +918,26 @@ Rules:
 
         logger.info("_run_outcome_deepdive: outcome_focus='%s'", outcome_focus[:80])
 
-        # Run targeted research
-        queries = [
-            f"{domain} {outcome_focus} formal model theory dynamics",
-            f"subscriber churn platform competition price sensitivity {domain}",
-        ]
+        # Strip markdown formatting before distilling to academic query keywords
+        import re as _re
+        outcome_clean = _re.sub(r'\*+|#{1,6}\s?|`+|\[|\]|\(.*?\)', '', outcome_focus).strip()
+        # Distill outcome_focus to clean keywords before hitting academic APIs
+        academic_query = await self._build_academic_query(outcome_clean, domain)
+        q_theory = f"{academic_query} formal model theory dynamics"
+        q_empirical = f"{academic_query} empirical analysis calibration"
+
         new_results = []
-        async with httpx.AsyncClient(timeout=15.0) as http:
-            for q in queries:
-                results = await ArxivAdapter(http).fetch(q, max_results=5)
-                new_results.extend([r for r in results if r.ok])
+        async with httpx.AsyncClient(timeout=20.0) as http:
+            # Run OpenAlex in parallel (no rate limit), arXiv sequentially after
+            oa_results, oa_empirical = await asyncio.gather(
+                OpenAlexAdapter(http).fetch(q_theory, max_results=5),
+                OpenAlexAdapter(http).fetch(q_empirical, max_results=5),
+            )
+            new_results.extend([r for r in oa_results if r.ok])
+            new_results.extend([r for r in oa_empirical if r.ok])
+            # arXiv as bonus — may 429, but OpenAlex already covers the gap
+            arxiv_results = await ArxivAdapter(http).fetch(q_theory, max_results=3)
+            new_results.extend([r for r in arxiv_results if r.ok])
 
         if new_results:
             session.research_context.results.extend(new_results)
@@ -1324,6 +1340,18 @@ def _apply_patch(simspec: SimSpec, patch: dict[str, Any]) -> None:
         ticks = patch["timeframe_ticks"]
         if isinstance(ticks, int) and ticks > 0:
             object.__setattr__(simspec.timeframe, "total_ticks", ticks)
+    if "metadata" in patch:
+        meta = dict(simspec.metadata)
+        meta.update(patch["metadata"])
+        # If agent is recording a theories answer that isn't actual TheoryRef objects,
+        # treat it as "empirical" mode so gap_detector won't re-flag theories.
+        if "theories" in patch["metadata"] and not simspec.theories:
+            meta["theories_mode"] = "empirical"
+        object.__setattr__(simspec, "metadata", meta)
+    if "theories_mode" in patch:
+        meta = dict(simspec.metadata)
+        meta["theories_mode"] = patch["theories_mode"]
+        object.__setattr__(simspec, "metadata", meta)
     if "actors" in patch:
         from core.spec import ActorSpec
         for actor_data in patch["actors"]:
@@ -1332,8 +1360,11 @@ def _apply_patch(simspec: SimSpec, patch: dict[str, Any]) -> None:
                 simspec.actors.append(ActorSpec(
                     actor_id=actor_id or f"actor_{len(simspec.actors)}",
                     name=actor_data.get("name", actor_id),
-                    role=actor_data.get("role", "other"),
-                    belief_state=actor_data.get("belief_state") or {},
+                    metadata={
+                        "role": actor_data.get("role", "other"),
+                        "belief_state": actor_data.get("belief_state") or {},
+                        "description": actor_data.get("description", ""),
+                    },
                 ))
 
 

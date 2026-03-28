@@ -84,6 +84,7 @@ async def _execute_run(run: SimulationRun, simspec_dict: dict) -> None:
     try:
         spec = SimSpec.model_validate(simspec_dict)
         runner = SimRunner(spec, rng_seed=42)
+        runner.setup()
         await asyncio.get_event_loop().run_in_executor(None, runner.run)
 
         # Serialize results

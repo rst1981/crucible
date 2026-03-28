@@ -356,7 +356,7 @@ class TestBuildMarkdown:
         from forge.assessment_generator import _build_markdown
         session = _make_session()
         md = _build_markdown(session, "test-scenario", [])
-        for section in ["Executive Summary", "Scenario Overview", "Theory Ensemble",
+        for section in ["Executive Summary", "## Scenario", "Recommended Theory Stack",
                          "Calibration Anchors", "Simulation Settings", "Data Gaps"]:
             assert section in md, f"Missing section: {section}"
 
