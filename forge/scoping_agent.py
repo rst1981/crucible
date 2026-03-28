@@ -390,9 +390,11 @@ class ScopingAgent:
         """
         spec = session.simspec
         domain_query = f"{spec.domain} {spec.description} {session.intake_text}"[:200]
-        actor_names = " ".join(a.name for a in spec.actors[:5])
-        # Keep academic query concise — long queries hurt relevance on all sources
-        academic_query = f"{spec.domain} {spec.description[:80]} {actor_names} formal model"
+
+        # Distill intake into 4-6 clean keyword phrases for academic search APIs.
+        # OpenAlex/S2 return 0 results on long noisy queries; short keywords work well.
+        academic_query = await self._build_academic_query(session.intake_text, spec.domain)
+        logger.info("Academic query: %r", academic_query)
 
         async with httpx.AsyncClient(timeout=25.0) as http:
             s2   = SemanticScholarAdapter(http)
@@ -459,6 +461,40 @@ class ScopingAgent:
             len(ctx.library_gaps),
         )
         return source_status
+
+    async def _build_academic_query(self, intake_text: str, domain: str) -> str:
+        """
+        Distill a free-text intake into 4-6 short keyword phrases suitable for
+        OpenAlex, Semantic Scholar, and arXiv search.
+
+        Long noisy queries return 0 results; clean keywords return thousands.
+        Uses haiku (~$0.0001 per call).
+        """
+        try:
+            resp = self._client.messages.create(
+                model=_HAIKU,
+                max_tokens=80,
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Extract 4-5 short academic search keywords from this scenario. "
+                        f"Return ONLY a JSON array of 2-4 word phrases. No explanation.\n\n"
+                        f"Domain: {domain}\nScenario: {intake_text[:300]}"
+                    ),
+                }],
+            )
+            raw = resp.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            keywords = json.loads(raw)
+            if isinstance(keywords, list) and keywords:
+                return " ".join(str(k) for k in keywords[:5])
+        except Exception as exc:
+            logger.warning("_build_academic_query failed: %s", exc)
+        # Fallback: domain + first words of intake
+        return f"{domain} {intake_text[:80]}"
 
     async def _fill_library_gaps(
         self,
