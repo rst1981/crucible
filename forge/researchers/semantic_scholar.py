@@ -33,6 +33,8 @@ class SemanticScholarAdapter(BaseAdapter):
         max_results: int = 5,
         calibrates: str | None = None,
     ) -> list[ResearchResult]:
+        import asyncio
+
         headers = {}
         if self._api_key:
             headers["x-api-key"] = self._api_key
@@ -42,16 +44,26 @@ class SemanticScholarAdapter(BaseAdapter):
             "limit": min(max_results, 10),
             "fields": _FIELDS,
         }
-        try:
-            resp = await self._client.get(
-                f"{_BASE_URL}/paper/search",
-                params=params,
-                headers=headers,
-                timeout=15.0,
-            )
-            resp.raise_for_status()
-        except Exception as exc:
-            return [self._error_result(query, str(exc), calibrates)]
+
+        # Retry once on 429 — respect Retry-After header if present, else 15s
+        for attempt in range(2):
+            try:
+                resp = await self._client.get(
+                    f"{_BASE_URL}/paper/search",
+                    params=params,
+                    headers=headers,
+                    timeout=15.0,
+                )
+                if resp.status_code == 429:
+                    if attempt == 0:
+                        wait = int(resp.headers.get("Retry-After", "15"))
+                        await asyncio.sleep(min(wait, 30))
+                        continue
+                    return [self._error_result(query, "rate limited (429)", calibrates)]
+                resp.raise_for_status()
+                break
+            except Exception as exc:
+                return [self._error_result(query, str(exc), calibrates)]
 
         try:
             data = resp.json()

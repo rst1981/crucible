@@ -398,16 +398,13 @@ class ScopingAgent:
         logger.info("Academic query: %r", academic_query)
 
         async with httpx.AsyncClient(timeout=25.0) as http:
-            s2   = SemanticScholarAdapter(http)
             oa   = OpenAlexAdapter(http)
             fred = FredAdapter(http)
             wb   = WorldBankAdapter(http)
             news = NewsAdapter(http)
 
-            # Run Semantic Scholar, OpenAlex, FRED, World Bank, and news in parallel.
-            # arXiv runs AFTER (sequential) to avoid rate-limit collisions with S2/OA.
+            # OpenAlex, FRED, World Bank, and news in parallel (no shared rate-limit pool).
             raw_results = await asyncio.gather(
-                s2.fetch(academic_query, max_results=5),
                 oa.fetch(academic_query, max_results=5),
                 fred.fetch("DCOILWTICO", max_results=1),
                 fred.fetch("CPIAUCSL", max_results=1),
@@ -417,14 +414,24 @@ class ScopingAgent:
                 return_exceptions=True,
             )
 
-        # arXiv: single sequential call after other sources complete (avoids 429 collisions)
+        # Semantic Scholar: run sequentially after OA to avoid shared-pool collisions.
+        # Only call if OA returned fewer than 3 good results — saves unauthenticated quota.
+        oa_ok_count = sum(1 for r in (raw_results[0] if isinstance(raw_results[0], list) else []) if r.ok)
+        async with httpx.AsyncClient(timeout=25.0) as http:
+            if oa_ok_count < 3:
+                s2_results = await SemanticScholarAdapter(http).fetch(academic_query, max_results=3)
+            else:
+                s2_results = []
+
+        # arXiv: single sequential call last (avoids 429 collisions with academic APIs)
         async with httpx.AsyncClient(timeout=25.0) as http:
             arxiv_results = await ArxivAdapter(http).fetch(academic_query, max_results=5)
 
-        raw_results = list(raw_results) + [arxiv_results]
+        raw_results = list(raw_results) + [s2_results, arxiv_results]
 
-        source_labels = ["Semantic Scholar", "OpenAlex", "FRED/DCOILWTICO",
-                         "FRED/CPIAUCSL", "FRED/UNRATE", "World Bank", "News feeds", "arXiv"]
+        source_labels = ["OpenAlex", "FRED/DCOILWTICO",
+                         "FRED/CPIAUCSL", "FRED/UNRATE", "World Bank", "News feeds",
+                         "Semantic Scholar", "arXiv"]
         source_status: dict[str, str] = {}
 
         ctx = session.research_context
