@@ -52,30 +52,25 @@ FEEDS_BY_CATEGORY: dict[str, list[str]] = {
         "https://www.chathamhouse.org/rss.xml",                       # Chatham House
         "https://www.crisisgroup.org/rss.xml",                        # ICG (conflict regions)
         "https://carnegieendowment.org/rss/",                         # Carnegie Endowment
-        "https://www.cfr.org/rss/all",                                # Council on Foreign Relations
+        "https://www.cfr.org/rss/world",                              # Council on Foreign Relations
     ],
     "defense": [
         "https://www.defensenews.com/arc/outboundfeeds/rss/",         # Defense News
-        "https://breakingdefense.com/feed/",                          # Breaking Defense
         "https://www.csis.org/rss.xml",                               # CSIS
         "https://www.rand.org/news/press.rss",                        # RAND
         "https://www.iiss.org/rss",                                   # IISS
         "https://www.belfercenter.org/rss.xml",                       # Belfer Center (Harvard)
         "https://warontherocks.com/feed/",                            # War on the Rocks
-        "https://www.sipri.org/rss.xml",                              # SIPRI (arms/military)
-        "https://www.nato.int/cps/en/natolive/news.rss",              # NATO press
+        "https://www.nato.int/cps/en/natohq/news.rss",                # NATO press (updated URL)
     ],
     "economics": [
-        "https://feeds.bloomberg.com/markets/news.rss",               # Bloomberg Markets
-        "https://www.ft.com/?format=rss",                             # Financial Times
-        "https://feeds.a.dj.com/rss/RSSMarketsMain.aspx",             # WSJ Markets
+        "https://www.ft.com/rss/home/uk",                              # Financial Times
         "https://www.imf.org/en/Blogs/rss",                           # IMF Blog
-        "https://cepr.org/vox/rss.xml",                               # VoxEU (CEPR)
-        "https://www.brookings.edu/topic/economics/feed/",            # Brookings Economics
+        "https://www.brookings.edu/feed/",                            # Brookings (all topics)
         "https://www.piie.com/rss.xml",                               # Peterson Institute
         "https://www.nber.org/rss/new_working_papers.xml",            # NBER Working Papers
-        "https://blogs.worldbank.org/rss.xml",                        # World Bank Blog
         "https://www.project-syndicate.org/rss",                      # Project Syndicate
+        "https://www.economist.com/finance-and-economics/rss.xml",    # Economist Finance
     ],
     "energy": [
         "https://oilprice.com/rss/main",                              # OilPrice
@@ -83,23 +78,18 @@ FEEDS_BY_CATEGORY: dict[str, list[str]] = {
         "https://www.iea.org/news.rss",                               # IEA
         "https://www.ogj.com/rss",                                    # Oil & Gas Journal
         "https://www.energymonitor.ai/feed/",                         # Energy Monitor
-        "https://www.spglobal.com/commodityinsights/en/rss/",         # S&P Global Commodities
     ],
     "corporate": [
-        "https://feeds.bloomberg.com/markets/news.rss",               # Bloomberg (shared)
-        "https://www.ft.com/?format=rss",                             # FT (shared)
-        "https://feeds.a.dj.com/rss/RSSBusiness.aspx",               # WSJ Business
+        "https://www.ft.com/rss/home/uk",                              # FT (shared)
         "https://feeds.hbr.org/harvardbusiness",                      # Harvard Business Review
-        "https://www.economist.com/finance-and-economics/rss.xml",    # Economist Finance
+        "https://www.economist.com/finance-and-economics/rss.xml",    # Economist Finance (shared)
         "https://feeds.fortune.com/fortune/global500",                # Fortune Global
     ],
     "sanctions": [
         "https://home.treasury.gov/system/files/126/ofac_recent_actions.xml",  # OFAC actions
         "https://feeds.reuters.com/Reuters/worldNews",                 # Reuters (shared)
-        "https://www.cfr.org/rss/sanctions",                          # CFR sanctions tracker
     ],
     "think_tanks": [
-        "https://www.brookings.edu/feed/",                            # Brookings (all)
         "https://carnegieendowment.org/rss/",                         # Carnegie (shared)
         "https://www.chathamhouse.org/rss.xml",                       # Chatham House (shared)
         "https://www.csis.org/rss.xml",                               # CSIS (shared)

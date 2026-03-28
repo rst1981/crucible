@@ -307,14 +307,26 @@ class ScopingAgent:
             session.domain = skeleton.domain
             session.state = ForgeState.PARALLEL_RESEARCH
 
-            yield "Running parallel research (arXiv, SSRN, FRED, World Bank, news)...\n"
-            await self._run_research(session)
+            yield "Running parallel research (arXiv, FRED, World Bank, news)...\n"
+            source_status = await self._run_research(session)
             self._spec_builder.apply_research_hints(session.simspec, session.research_context)
             session.gaps = detect_gaps(session.simspec)
             self._mark_research_filled_gaps(session)
             session.state = ForgeState.DYNAMIC_INTERVIEW
 
             ctx = session.research_context
+
+            # Surface source failures to the user
+            failed_sources = {k: v for k, v in source_status.items()
+                              if v not in ("ok",) and not v.startswith("partial")}
+            partial_sources = {k: v for k, v in source_status.items() if v.startswith("partial")}
+            if failed_sources:
+                names = ", ".join(failed_sources.keys())
+                yield f"⚠ Research note: {names} unavailable — results may be limited.\n"
+            if partial_sources:
+                names = ", ".join(f"{k} ({v})" for k, v in partial_sources.items())
+                yield f"⚠ Partial data from: {names}.\n"
+
             if ctx.library_additions:
                 yield (
                     f"Added {len(ctx.library_additions)} new theor"
@@ -328,7 +340,8 @@ class ScopingAgent:
                     f"(smoke test failed): {', '.join(ctx.library_gaps)}.\n"
                 )
 
-            yield "Research complete. Generating first question...\n"
+            ok_count = sum(1 for v in source_status.values() if v == "ok" or v.startswith("partial"))
+            yield f"Research complete ({ok_count}/{len(source_status)} sources). Generating first question...\n"
             reply = await self._run_interview_turn(session, user_message=None)
             yield reply
 
@@ -359,7 +372,7 @@ class ScopingAgent:
         session.domain = skeleton.domain
         session.state = ForgeState.PARALLEL_RESEARCH
 
-        await self._run_research(session)
+        await self._run_research(session)  # return value unused in non-streaming path
         self._spec_builder.apply_research_hints(session.simspec, session.research_context)
         session.gaps = detect_gaps(session.simspec)
         self._mark_research_filled_gaps(session)
@@ -367,46 +380,65 @@ class ScopingAgent:
 
         return await self._run_interview_turn(session, user_message=None)
 
-    async def _run_research(self, session: ForgeSession) -> None:
-        """Fan-out research across all adapters in parallel."""
+    async def _run_research(self, session: ForgeSession) -> dict[str, str]:
+        """
+        Fan-out research across all adapters in parallel.
+        Returns a dict of source → status for user-facing warnings.
+        SSRN is excluded (permanently 403-blocked).
+        """
         spec = session.simspec
+        # Keep academic query short and focused — arXiv handles concise queries better
         domain_query = f"{spec.domain} {spec.description} {session.intake_text}"[:200]
         actor_names = " ".join(a.name for a in spec.actors[:5])
-        academic_query = f"{domain_query} {actor_names} formal model simulation"
+        academic_query = f"{spec.domain} {spec.description[:80]} {actor_names} formal model"
+
+        # Domain-appropriate FRED series (fetched individually — series IDs, not text search)
+        fred_series = ["DCOILWTICO", "CPIAUCSL", "GDP", "UNRATE", "GASREGCOVW"]
 
         async with httpx.AsyncClient(timeout=20.0) as http:
-            arxiv  = ArxivAdapter(http)
-            ssrn   = SsrnAdapter(http)
-            fred   = FredAdapter(http)
-            wb     = WorldBankAdapter(http)
-            news   = NewsAdapter(http)
+            arxiv = ArxivAdapter(http)
+            fred  = FredAdapter(http)
+            wb    = WorldBankAdapter(http)
+            news  = NewsAdapter(http)
 
-            results = await asyncio.gather(
+            raw_results = await asyncio.gather(
                 arxiv.fetch(academic_query, max_results=5),
-                ssrn.fetch(academic_query, max_results=5),
-                fred.fetch("GDP CPIAUCSL DCOILWTICO", max_results=3),
+                # Fetch 3 FRED series individually (series IDs route to direct fetch, not search)
+                fred.fetch("DCOILWTICO", max_results=1),
+                fred.fetch("CPIAUCSL", max_results=1),
+                fred.fetch("UNRATE", max_results=1),
                 wb.fetch("NY.GDP.MKTP.CD MS.MIL.XPND.GD.ZS NE.TRD.GNFS.ZS", max_results=5),
                 news.fetch(domain_query, max_results=5),
                 return_exceptions=True,
             )
 
+        source_labels = ["arXiv", "FRED/DCOILWTICO", "FRED/CPIAUCSL", "FRED/UNRATE",
+                         "World Bank", "News feeds"]
+        source_status: dict[str, str] = {}
+
         ctx = session.research_context
-        for result in results:
+        for label, result in zip(source_labels, raw_results):
             if isinstance(result, Exception):
-                logger.warning("Research adapter error: %s", result)
+                logger.warning("Research adapter error (%s): %s", label, result)
+                source_status[label] = f"error: {result}"
                 continue
             if isinstance(result, list):
+                ok = [r for r in result if r.ok]
+                failed = [r for r in result if not r.ok]
                 ctx.results.extend(result)
+                if failed and not ok:
+                    source_status[label] = failed[0].error or "unavailable"
+                elif failed:
+                    source_status[label] = f"partial ({len(ok)}/{len(result)})"
+                else:
+                    source_status[label] = "ok"
 
-        # Library gap fill: run academic results through TheoryBuilder.
-        # Papers containing new formal models not yet in the library are
-        # auto-approved (if smoke test passes) or queued for review.
+        # Library gap fill: pass successful academic results through TheoryBuilder
         academic = [r for r in ctx.results if r.source_type in ("arxiv", "ssrn") and r.ok]
         if academic:
             await self._fill_library_gaps(academic, ctx)
 
-        # extraction pass: use Claude to pull theory candidates + param estimates
-        # (runs after gap fill so newly added theories appear in list_theories())
+        # Extraction pass: pull theory candidates + param estimates from all results
         await self._extraction_pass(ctx, session.simspec)
         ctx.research_complete = True
         logger.info(
@@ -418,6 +450,7 @@ class ScopingAgent:
             len(ctx.library_additions),
             len(ctx.library_gaps),
         )
+        return source_status
 
     async def _fill_library_gaps(
         self,

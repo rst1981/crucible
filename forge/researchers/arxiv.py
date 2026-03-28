@@ -37,18 +37,28 @@ class ArxivAdapter(BaseAdapter):
         max_results: int = 5,
         calibrates: str | None = None,
     ) -> list[ResearchResult]:
+        import asyncio
+        # Truncate long queries — arXiv handles short focused queries better
+        short_query = query[:120]
         params = {
-            "search_query": f"all:{query}",
+            "search_query": f"all:{short_query}",
             "start": 0,
             "max_results": max_results,
             "sortBy": "relevance",
             "sortOrder": "descending",
         }
-        try:
-            resp = await self._client.get(_BASE_URL, params=params, timeout=15.0)
-            resp.raise_for_status()
-        except Exception as exc:
-            return [self._error_result(query, str(exc), calibrates)]
+        for attempt in range(2):
+            try:
+                resp = await self._client.get(_BASE_URL, params=params, timeout=15.0)
+                if resp.status_code == 429:
+                    if attempt == 0:
+                        await asyncio.sleep(12)  # back off and retry once
+                        continue
+                    return [self._error_result(query, "arXiv rate-limited (429) — retry later", calibrates)]
+                resp.raise_for_status()
+                break
+            except Exception as exc:
+                return [self._error_result(query, str(exc), calibrates)]
 
         try:
             return _parse_arxiv_xml(resp.text, query, calibrates)
