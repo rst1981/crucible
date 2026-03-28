@@ -112,14 +112,45 @@ async def send_message(session_id: str, body: MessageRequest, request: Request):
             # so the agent runs the full intake pipeline first.
             user_msg = body.message if session.state != ForgeState.INTAKE else None
 
+            # Drain the generator into a queue from a background task so we
+            # can send SSE heartbeats without cancelling long-running awaits
+            # (asyncio.wait_for cancels the coroutine on timeout).
+            chunk_queue: asyncio.Queue = asyncio.Queue()
+
+            async def _drain():
+                try:
+                    async for chunk in _agent.turn_stream(session, user_message=user_msg):
+                        await chunk_queue.put(("chunk", chunk))
+                    await chunk_queue.put(("done", None))
+                except Exception as exc:  # noqa: BLE001
+                    await chunk_queue.put(("error", exc))
+
+            drain_task = asyncio.create_task(_drain())
+
             full_reply = ""
-            async for chunk in _agent.turn_stream(session, user_message=user_msg):
+            while True:
+                try:
+                    kind, value = await asyncio.wait_for(
+                        chunk_queue.get(), timeout=15.0
+                    )
+                except asyncio.TimeoutError:
+                    # Generator is still running — keep connection alive
+                    yield ": heartbeat\n\n"
+                    continue
+
+                if kind == "done":
+                    break
+                if kind == "error":
+                    raise value  # type: ignore[misc]
+
+                # kind == "chunk"
+                chunk: str = value  # type: ignore[assignment]
                 full_reply += chunk
                 payload = json.dumps({"type": "chunk", "text": chunk})
                 yield f"data: {payload}\n\n"
-                # Check if client disconnected
                 if await request.is_disconnected():
                     logger.info("Client disconnected during session %s", session_id)
+                    drain_task.cancel()
                     return
 
             done_payload = json.dumps({

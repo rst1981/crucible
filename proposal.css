@@ -9,3 +9,12 @@ td:first-child { width: 22%; }
 td:nth-child(2) { width: 50%; }
 td:nth-child(3) { width: 28%; }
 pre, code { font-size: 9px; overflow-wrap: break-word; white-space: pre-wrap; }
+
+/* --- Images --- */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 14px auto;
+  page-break-inside: avoid;
+}

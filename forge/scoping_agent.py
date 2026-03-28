@@ -67,9 +67,9 @@ Key rules:
 3. Complete the spec in ≤ 5 questions. If a gap cannot be filled with
    certainty, use a reasonable default informed by research and flag it
    in the SimSpec metadata.
-4. After research completes, call update_simspec with everything you learned,
-   then identify_gap for any remaining unknowns, then ask_user for the most
-   important gap.
+4. After research completes, call update_simspec ONCE with everything you
+   learned. Then immediately call ask_user for the single most important gap
+   the consultant must answer. Do NOT call update_simspec multiple times.
 5. When all critical gaps are filled, call select_theories then finalize.
 """
 
@@ -584,7 +584,22 @@ Rules:
 
         # Tool-use loop
         max_tool_rounds = 20
+        simspec_updates = 0  # track how many times update_simspec has been called
         for round_num in range(max_tool_rounds):
+            # After one update_simspec, inject a hard instruction to ask the user next
+            if simspec_updates >= 1:
+                nudge = (
+                    "\n\nYou have already called update_simspec once. "
+                    "You MUST now call ask_user with the single most important "
+                    "remaining question. Do NOT call update_simspec again."
+                )
+                if messages and messages[-1]["role"] == "user":
+                    if isinstance(messages[-1]["content"], str):
+                        messages[-1]["content"] += nudge
+                    elif isinstance(messages[-1]["content"], list):
+                        # tool_results list — append as a separate user text turn
+                        messages.append({"role": "user", "content": nudge})
+
             resp = self._client.messages.create(
                 model=_AGENT_MODEL,
                 max_tokens=1024,
@@ -613,6 +628,8 @@ Rules:
             final_reply = ""
 
             for tool_call in tool_blocks:
+                if tool_call.name == "update_simspec":
+                    simspec_updates += 1
                 result, stop = await self._dispatch_tool(
                     tool_call.name, tool_call.input, session
                 )
@@ -830,7 +847,17 @@ Rules:
         if name == "update_simspec":
             patch = inputs.get("patch", {})
             _apply_patch(session.simspec, patch)
-            return {"ok": True, "spec_name": session.simspec.name}, False
+            # Return remaining open gaps so the agent knows what to ask about next
+            open_gaps = [
+                {"field_path": g.field_path, "description": g.description}
+                for g in session.open_gaps()[:5]
+            ]
+            return {
+                "ok": True,
+                "spec_name": session.simspec.name,
+                "remaining_gaps": open_gaps,
+                "next_step": "Call ask_user for the highest-priority gap above." if open_gaps else "Call select_theories then finalize.",
+            }, False
 
         if name == "identify_gap":
             gap = SpecGap(

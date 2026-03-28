@@ -137,6 +137,15 @@ a {
   text-decoration: none;
 }
 
+/* --- Images --- */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 14px auto;
+  page-break-inside: avoid;
+}
+
 /* --- Strong / em --- */
 strong { font-weight: 700; }
 em { font-style: italic; }

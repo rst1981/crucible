@@ -227,6 +227,17 @@ python scripts/md_to_pdf.py forge/research/{slug}-assessment.md
 # Output: forge/research/{slug}-assessment.pdf
 ```
 
+**Image references in assessments:** If the document includes any figures (e.g. cascade
+diagrams exported as PNG), use **absolute paths** in the markdown — relative paths are
+not resolved correctly by the weasyprint PDF engine:
+
+```markdown
+![Caption](/absolute/path/to/scenarios/{slug}/charts/figure.png)
+```
+
+The shared CSS (`forge/research/forge-research.css`) constrains all images to
+`max-width: 100%; height: auto` — no manual width attributes needed.
+
 Report the output path and file size. Skip only with `--no-pdf`.
 
 ---

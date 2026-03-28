@@ -243,40 +243,80 @@ prior expectations.
 
 ---
 
-## Phase 5: Embed chart references
+## Phase 5: Generate charts (STANDARD — do not skip)
 
-After writing the main document, check which charts exist:
+Run the shared chart generator before writing the document so chart paths are known:
 
 ```bash
-ls scenarios/{slug}/charts/
+python scripts/generate_charts.py {slug}
+# Output: scenarios/{slug}/charts/fig1_metrics_dashboard.png
+#                                  fig2_shock_cascade.png
+#                                  fig3_mc_fan.png
+#                                  fig4_secondary_indicators.png
+#                                  fig5_mc_final_distribution.png
 ```
 
-For each chart found, ensure it is referenced at the appropriate point in the document
-with the correct relative path: `../../scenarios/{slug}/charts/{filename}`.
+If the script is missing a scenario plan for this slug it will auto-detect metrics from
+results.json and produce a best-effort chart set.  Add a named plan to
+`scripts/generate_charts.py _SCENARIO_PLANS` after the run if you want to customise
+labels, colours, or shock annotations.
+
+Skip only with `--no-charts`.
 
 ---
 
-## Phase 6: PDF Export (STANDARD — do not skip)
+## Phase 6: Embed chart references
 
-After writing the markdown findings document, convert it to PDF:
+After charts are generated, embed them in the findings document at these standard locations
+using **absolute paths** (required for weasyprint PDF rendering):
+
+| Figure | Placement |
+|--------|-----------|
+| `fig1_metrics_dashboard.png` | After the Simulation Design section header |
+| `fig2_shock_cascade.png` | End of Executive Findings narrative |
+| `fig3_mc_fan.png` | End of Executive Findings narrative (after fig2) |
+| `fig4_secondary_indicators.png` | Before the Cascade Interaction section |
+| `fig5_mc_final_distribution.png` | End of Monte Carlo section |
+
+Use absolute paths for all image references (required for PDF):
+
+```markdown
+![Caption](/absolute/path/to/scenarios/{slug}/charts/fig1_metrics_dashboard.png)
+```
+
+To get the absolute path:
+```bash
+python -c "import pathlib; print(pathlib.Path('scenarios/{slug}/charts').resolve())"
+```
+
+---
+
+## Phase 7: PDF Export (STANDARD — do not skip)
+
+After writing the markdown findings document with chart references, convert it to PDF:
 
 ```bash
 python scripts/md_to_pdf.py forge/research/{slug}-simulation-results.md
 # Output: forge/research/{slug}-simulation-results.pdf
 ```
 
+The shared CSS (`forge/research/forge-research.css`) includes `max-width: 100%; height: auto`
+on all `img` elements — charts will scale correctly to A4 page width automatically.
+
 Report the output path and file size. Skip only with `--no-pdf`.
 
 ---
 
-## Phase 7: Quality check
+## Phase 8: Quality check
 
 Before finalising:
+- [ ] `python scripts/generate_charts.py {slug}` ran without errors
+- [ ] Every chart reference in the document uses an absolute path
+- [ ] PDF export produced no image fetch warnings
 - [ ] Every number in the Executive Summary is sourced from results.json (not estimated)
 - [ ] Every module has a results section with actual data table values
 - [ ] MC section is present if MC data exists; absent or noted if not
 - [ ] Limitations table marks previously open items as RESOLVED if the v2 sim fixed them
-- [ ] All chart image references use correct relative paths
 - [ ] Parameters appendix covers all modules in the cascade
 
 ---
