@@ -67,9 +67,13 @@ Key rules:
 3. Complete the spec in ≤ 5 questions. If a gap cannot be filled with
    certainty, use a reasonable default informed by research and flag it
    in the SimSpec metadata.
-4. After research completes, call update_simspec ONCE with everything you
-   learned. Then immediately call ask_user for the single most important gap
-   the consultant must answer. Do NOT call update_simspec multiple times.
+4. STRICT TOOL ORDER — follow this exactly, one step per round:
+   a. Run research tools (search_arxiv, search_ssrn, search_news, get_data) in parallel.
+   b. Call update_simspec ONCE with everything learned from research.
+   c. Call ask_user for the highest-priority open gap (outcome_focus first, always).
+   d. When the user replies, call update_simspec ONCE with their answer, then ask_user for the next gap.
+   CRITICAL: Never call update_simspec twice in a row. After every update_simspec,
+   the very next call MUST be ask_user (unless all gaps are filled, then finalize).
 5. When all critical gaps are filled, call select_theories then finalize.
 """
 
@@ -533,13 +537,23 @@ Rules:
         session: ForgeSession,
         user_message: str | None,
     ) -> str:
+        deep_dive_summary: str | None = None
+
         if user_message:
+            previously_open = {g.field_path for g in session.open_gaps()}
             self._spec_builder.apply_user_answer(
                 session.simspec, session.gaps, user_message
             )
             new_gaps = detect_gaps(session.simspec)
             _merge_gaps(session.gaps, new_gaps)
             self._mark_research_filled_gaps(session)
+
+            # If outcome_focus was just filled: run targeted theory deep-dive
+            now_open = {g.field_path for g in session.open_gaps()}
+            just_filled = previously_open - now_open
+            if "outcome_focus" in just_filled and not session.deep_dive_complete:
+                deep_dive_summary = await self._run_outcome_deepdive(session)
+                session.deep_dive_complete = True
 
         open_gaps = session.open_gaps()
         logger.info(
@@ -555,7 +569,11 @@ Rules:
             return await self._run_theory_mapping(session)
 
         # Use Claude tool-use for the next question
-        return await self._agent_turn(session)
+        next_reply = await self._agent_turn(session)
+
+        if deep_dive_summary:
+            return f"{deep_dive_summary}\n\n---\n\n{next_reply}"
+        return next_reply
 
     async def _agent_turn(self, session: ForgeSession) -> str:
         """
@@ -572,9 +590,25 @@ Rules:
             f"- [{g.priority:.1f}] {g.field_path}: {g.description}"
             for g in session.open_gaps()[:5]
         )
+        top_gap = session.open_gaps()[0] if session.open_gaps() else None
+        research_done = session.research_context.research_complete
+        if research_done and top_gap:
+            next_action = (
+                f"Research is complete. Call update_simspec ONCE with research findings, "
+                f"then immediately call ask_user for gap '{top_gap.field_path}': "
+                f"{top_gap.description}"
+            )
+        elif top_gap:
+            next_action = (
+                f"Run research first, then call update_simspec once, "
+                f"then ask_user for gap '{top_gap.field_path}'."
+            )
+        else:
+            next_action = "All gaps filled — call select_theories then finalize."
         context_injection = (
             f"\n\nCurrent SimSpec state:\n{spec_summary}"
             f"\n\nOpen gaps:\n{open_gap_text}"
+            f"\n\nNext action: {next_action}"
             f"\n\nTurn {session.turn_count}/{MAX_TURNS}."
         )
         if messages and messages[-1]["role"] == "user":
@@ -584,22 +618,8 @@ Rules:
 
         # Tool-use loop
         max_tool_rounds = 20
-        simspec_updates = 0  # track how many times update_simspec has been called
+        simspec_update_count = 0  # guard: force ask_user after first update_simspec
         for round_num in range(max_tool_rounds):
-            # After one update_simspec, inject a hard instruction to ask the user next
-            if simspec_updates >= 1:
-                nudge = (
-                    "\n\nYou have already called update_simspec once. "
-                    "You MUST now call ask_user with the single most important "
-                    "remaining question. Do NOT call update_simspec again."
-                )
-                if messages and messages[-1]["role"] == "user":
-                    if isinstance(messages[-1]["content"], str):
-                        messages[-1]["content"] += nudge
-                    elif isinstance(messages[-1]["content"], list):
-                        # tool_results list — append as a separate user text turn
-                        messages.append({"role": "user", "content": nudge})
-
             resp = self._client.messages.create(
                 model=_AGENT_MODEL,
                 max_tokens=1024,
@@ -628,11 +648,11 @@ Rules:
             final_reply = ""
 
             for tool_call in tool_blocks:
-                if tool_call.name == "update_simspec":
-                    simspec_updates += 1
                 result, stop = await self._dispatch_tool(
                     tool_call.name, tool_call.input, session
                 )
+                if tool_call.name == "update_simspec":
+                    simspec_update_count += 1
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tool_call.id,
@@ -642,7 +662,16 @@ Rules:
                     asked_user = True
                     final_reply = result.get("question", str(result))
 
+            tool_names = [b.name for b in tool_blocks]
             messages.append({"role": "user", "content": tool_results})
+
+            # After first update_simspec without ask_user: force a constrained ask call
+            if simspec_update_count >= 1 and "ask_user" not in tool_names and not asked_user:
+                open_gaps = session.open_gaps()
+                if open_gaps:
+                    question = await self._force_ask_user(session, messages)
+                    session.add_message(MessageRole.ASSISTANT, question)
+                    return question
 
             if asked_user:
                 session.add_message(MessageRole.ASSISTANT, final_reply)
@@ -665,6 +694,130 @@ Rules:
         await self._run_theory_mapping(session)
         session.add_message(MessageRole.ASSISTANT, reply)
         return reply
+
+    async def _force_ask_user(
+        self,
+        session: ForgeSession,
+        prior_messages: list[dict[str, Any]],
+    ) -> str:
+        """
+        Make a constrained Claude call with ONLY ask_user available.
+        Called after update_simspec to guarantee the agent asks a question
+        rather than calling update_simspec again.
+        """
+        top_gap = session.open_gaps()[0]
+        spec_summary = _spec_summary(session.simspec)
+        ask_tool = next(t for t in _TOOLS if t["name"] == "ask_user")
+
+        system = (
+            "You are conducting a simulation scoping interview. "
+            "The SimSpec has been updated with research findings. "
+            "You must now ask the consultant ONE question about the following gap. "
+            "Use consulting language — no technical parameters. "
+            "You MUST call the ask_user tool."
+        )
+        user_msg = (
+            f"Current SimSpec:\n{spec_summary}\n\n"
+            f"Ask the consultant about this gap:\n"
+            f"  Field: {top_gap.field_path}\n"
+            f"  Question: {top_gap.description}"
+        )
+
+        try:
+            resp = self._client.messages.create(
+                model=_AGENT_MODEL,
+                max_tokens=512,
+                system=system,
+                tools=[ask_tool],
+                tool_choice={"type": "any"},
+                messages=[{"role": "user", "content": user_msg}],
+            )
+            for block in resp.content:
+                if hasattr(block, "type") and block.type == "tool_use" and block.name == "ask_user":
+                    question = block.input.get("question", "")
+                    context  = block.input.get("context", "")
+                    options  = block.input.get("options", [])
+                    full_q = question
+                    if context:
+                        full_q += f"\n\n*Context: {context}*"
+                    if options:
+                        full_q += "\n\nSuggested options:\n" + "\n".join(f"- {o}" for o in options)
+                    logger.info("_force_ask_user: asked about '%s'", top_gap.field_path)
+                    return full_q
+                if hasattr(block, "type") and block.type == "text":
+                    return block.text
+        except Exception as exc:
+            logger.warning("_force_ask_user failed: %s", exc)
+
+        # Fallback: return the gap description directly
+        return top_gap.description
+
+    async def _run_outcome_deepdive(self, session: ForgeSession) -> str:
+        """
+        After outcome_focus is filled, run a targeted theory deep-dive:
+        - 2 focused arXiv searches scoped to the refined outcome
+        - Re-run extraction pass to update theory_candidates
+        - Present findings as a formatted consulting summary
+        """
+        outcome_focus = session.simspec.metadata.get("outcome_focus", "")
+        domain = session.simspec.domain or "market"
+        scenario_name = session.simspec.name or "the scenario"
+
+        logger.info("_run_outcome_deepdive: outcome_focus='%s'", outcome_focus[:80])
+
+        # Run targeted research
+        queries = [
+            f"{domain} {outcome_focus} formal model theory dynamics",
+            f"subscriber churn platform competition price sensitivity {domain}",
+        ]
+        new_results = []
+        async with httpx.AsyncClient(timeout=15.0) as http:
+            for q in queries:
+                results = await ArxivAdapter(http).fetch(q, max_results=5)
+                new_results.extend([r for r in results if r.ok])
+
+        if new_results:
+            session.research_context.results.extend(new_results)
+            await self._extraction_pass(session.research_context, session.simspec)
+
+        candidates = session.research_context.theory_candidates
+        param_est  = session.research_context.parameter_estimates
+
+        # Format summary via haiku
+        snippets = "\n\n".join(r.to_context_snippet() for r in new_results)[:4000]
+        prompt = f"""
+You are a simulation consultant presenting theory findings to a client.
+
+Scenario: {scenario_name}
+Outcome focus: {outcome_focus}
+Theory candidates identified: {', '.join(candidates) if candidates else 'none yet'}
+Parameter estimates: {json.dumps(param_est, indent=2) if param_est else 'none'}
+
+New research findings:
+{snippets}
+
+Write a concise theory deep-dive (3–5 bullet points) in consulting language:
+- Which theoretical frameworks are most relevant to this outcome focus
+- What each framework reveals about the key dynamics
+- Any calibration anchors found in the research (cite values where found)
+
+End with one sentence on which framework should anchor the ensemble.
+Do NOT mention tool parameters or code. Write for a strategy consultant, not a developer.
+"""
+        try:
+            resp = self._client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=600,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            summary = resp.content[0].text.strip()
+        except Exception as exc:
+            logger.warning("_run_outcome_deepdive summary failed: %s", exc)
+            summary = (
+                f"Deep-dive complete. Theory candidates: {', '.join(candidates) or 'none'}."
+            )
+
+        return f"**Theory deep-dive — {outcome_focus[:60]}**\n\n{summary}"
 
     async def _run_theory_mapping(self, session: ForgeSession) -> str:
         # Include any theories auto-added to the library during research
@@ -847,16 +1000,20 @@ Rules:
         if name == "update_simspec":
             patch = inputs.get("patch", {})
             _apply_patch(session.simspec, patch)
-            # Return remaining open gaps so the agent knows what to ask about next
-            open_gaps = [
+            open_gaps = session.open_gaps()
+            remaining = [
                 {"field_path": g.field_path, "description": g.description}
-                for g in session.open_gaps()[:5]
+                for g in open_gaps[:5]
             ]
             return {
                 "ok": True,
                 "spec_name": session.simspec.name,
-                "remaining_gaps": open_gaps,
-                "next_step": "Call ask_user for the highest-priority gap above." if open_gaps else "Call select_theories then finalize.",
+                "remaining_gaps": remaining,
+                "next_step": (
+                    "Call ask_user for the highest-priority gap above."
+                    if remaining else
+                    "All gaps filled — call select_theories then finalize."
+                ),
             }, False
 
         if name == "identify_gap":

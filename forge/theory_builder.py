@@ -168,7 +168,7 @@ def approve(pending_id: str, reviewed_by: str = "consultant") -> Path:
 
     _DISCOVERED_DIR.mkdir(parents=True, exist_ok=True)
     file_path = _DISCOVERED_DIR / f"{pt.theory_id}.py"
-    file_path.write_text(pt.generated_code)
+    file_path.write_text(pt.generated_code, encoding="utf-8")
 
     load_theory_file(file_path)
 
@@ -256,7 +256,7 @@ def _smoke_test(code: str) -> SmokeTestResult:
     from core.theories.base import TheoryBase
 
     with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", delete=False, prefix="_crucible_smoke_"
+        mode="w", suffix=".py", delete=False, prefix="_crucible_smoke_", encoding="utf-8"
     ) as tmp:
         tmp.write(code)
         tmp_path = Path(tmp.name)

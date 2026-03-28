@@ -133,6 +133,7 @@ class ForgeSession:
     # recommended_theories: list[TheoryRecommendation] — stored as dicts for JSON safety
     recommended_theories: list[dict]        = field(default_factory=list)
     custom_theories:      list[dict] | None = None   # None = not yet customized
+    deep_dive_complete:   bool              = False  # True after outcome_focus deep-dive has run
 
     def open_gaps(self) -> list[SpecGap]:
         """Return unfilled gaps ordered by priority descending."""

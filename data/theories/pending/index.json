@@ -49,5 +49,98 @@
     "created_at": "2026-03-27T04:48:08.991665+00:00",
     "source_type": "arxiv",
     "citation": "Lu, C.P. (2025). The Race to Efficiency: A New Perspective on AI Scaling Laws. arXiv:2501.02156."
+  },
+  {
+    "pending_id": "1225b6d3-bd4a-4d77-a226-c53d81b48801",
+    "theory_id": "equity_impact_decay",
+    "display_name": "Slow Decay of Market Impact",
+    "domains": [
+      "equity",
+      "market",
+      "finance"
+    ],
+    "status": "approved",
+    "smoke_passed": true,
+    "created_at": "2026-03-27T16:55:35.948977+00:00",
+    "source_type": "arxiv",
+    "citation": "Bacry et al. (2014). Slow decay of impact in equity markets. arXiv:1407.3390."
+  },
+  {
+    "pending_id": "e6f362b4-3a4d-44b2-a333-eebde1dd3690",
+    "theory_id": "retail_wom_customer_exp",
+    "display_name": "Retail Word-of-Mouth Customer Experience",
+    "domains": [
+      "consumer_behavior",
+      "marketing",
+      "social"
+    ],
+    "status": "approved",
+    "smoke_passed": true,
+    "created_at": "2026-03-27T17:18:51.940140+00:00",
+    "source_type": "arxiv",
+    "citation": "Dunn, M. et al. (2010). Simulating Customer Experience and Word Of Mouth in Retail - A Case Study. arXiv:1003.3784v1."
+  },
+  {
+    "pending_id": "6851ecbb-789b-4c2c-b306-a223e95f959e",
+    "theory_id": "social_media_bubble_abm",
+    "display_name": "Social Media-Driven Bubble Formation ABM",
+    "domains": [
+      "finance",
+      "behavioral_finance",
+      "social",
+      "contagion",
+      "equity"
+    ],
+    "status": "approved",
+    "smoke_passed": true,
+    "created_at": "2026-03-27T17:19:50.233047+00:00",
+    "source_type": "arxiv",
+    "citation": "Anonymous (2024). Simulation of Social Media-Driven Bubble Formation in Financial Markets using an Agent-Based Model with Hierarchical Influence Network. arXiv:2409.00742v1."
+  },
+  {
+    "pending_id": "817bece9-c78e-409f-9a38-b0e1f7ea46ed",
+    "theory_id": "music_streaming_revenue_share",
+    "display_name": "Music Streaming Revenue Sharing",
+    "domains": [
+      "market",
+      "game_theory",
+      "social"
+    ],
+    "status": "approved",
+    "smoke_passed": true,
+    "created_at": "2026-03-27T20:03:38.058216+00:00",
+    "source_type": "arxiv",
+    "citation": "B\u00e9al et al. (2023). Revenue sharing at music streaming platforms. arXiv:2310.11861."
+  },
+  {
+    "pending_id": "03c13ca4-86b6-46da-9011-1808f95d77e5",
+    "theory_id": "duopoly_platform_competition",
+    "display_name": "Duopolistic Platform Competition (Two-Sided Market)",
+    "domains": [
+      "game_theory",
+      "competitive_dynamics",
+      "market",
+      "technology"
+    ],
+    "status": "pending",
+    "smoke_passed": false,
+    "created_at": "2026-03-27T20:04:35.372421+00:00",
+    "source_type": "arxiv",
+    "citation": "Anonymous (2020). Duopolistic platform competition for revenue and throughput. arXiv:2001.11529v1."
+  },
+  {
+    "pending_id": "e1b5c072-21fa-45b1-ad37-647ea33ed0e3",
+    "theory_id": "network_revenue_mgmt_fair",
+    "display_name": "Network Revenue Management with Fair Resource Balancing",
+    "domains": [
+      "market",
+      "supply_chain",
+      "competitive_dynamics"
+    ],
+    "status": "approved",
+    "smoke_passed": true,
+    "created_at": "2026-03-27T20:05:30.639326+00:00",
+    "source_type": "arxiv",
+    "citation": "Anonymous (2022). Network Revenue Management with Demand Learning and Fair Resource-Consumption Balancing. arXiv:2207.11159v3."
   }
 ]
