@@ -24,12 +24,13 @@ export const forgeApi = {
   acceptRecommended: (id: string) => req<any>('PUT', `/forge/intake/${id}/theories/accept`),
   setCustomEnsemble: (id: string, theories: unknown[]) =>
     req<any>('PUT', `/forge/intake/${id}/theories/custom`, { theories }),
+  generateAssessment: (id: string) => req<any>('POST', `/forge/intake/${id}/assessment`),
 }
 
 // Simulations
 export const simApi = {
-  launch: (session_id: string) =>
-    req<{ launched: { sim_id: string; ensemble_type: string }[] }>('POST', '/simulations', { session_id }),
+  launch: (session_id: string, run_mode: 'recommended' | 'custom' | 'both' = 'recommended') =>
+    req<{ launched: { sim_id: string; ensemble_type: string }[] }>('POST', '/simulations', { session_id, run_mode }),
   get: (sim_id: string) => req<any>('GET', `/simulations/${sim_id}`),
   list: (session_id?: string) =>
     req<any>('GET', `/simulations${session_id ? `?session_id=${session_id}` : ''}`),

@@ -852,25 +852,24 @@ Do NOT mention tool parameters or code. Write for a strategy consultant, not a d
 
     async def _run_ensemble_review(self, session: ForgeSession) -> str:
         """
-        Present the recommended ensemble to the consultant and ask whether they
-        want to accept it, modify it, or build a custom ensemble alongside.
-
-        The consultant can:
-          - Accept as-is → calls PUT /forge/intake/{id}/theories/accept
-          - Submit custom list → PUT /forge/intake/{id}/theories/custom
-          - Both run when POST /simulations is called (recommended + custom)
+        Enrich recommended_theories with application_note per theory, then
+        present the ensemble. The frontend renders the detailed card view.
         """
         recs = session.recommended_theories
         if not recs:
-            # No recommendations — go straight to validation with empty theories
             return await self._finalize_ensemble(session)
+
+        # Enrich each theory with an application_note (single haiku call)
+        await self._add_application_notes(session)
+        recs = session.recommended_theories  # re-read after enrichment
 
         lines = ["**Recommended theory ensemble** (ranked by domain relevance):\n"]
         for i, r in enumerate(recs):
-            src = " *(new — added to library)*" if r["source"] == "discovered" else ""
+            src = " *(new — added to library)*" if r.get("source") == "discovered" else ""
+            note = r.get("application_note") or r.get("rationale", "")
             lines.append(
                 f"{i+1}. **{r['display_name']}**{src} — score {r['score']:.2f}  \n"
-                f"   *{r['rationale']}*"
+                f"   {note}"
             )
 
         additions = session.research_context.library_additions
@@ -882,16 +881,67 @@ Do NOT mention tool parameters or code. Write for a strategy consultant, not a d
             )
 
         lines.append(
-            "\n\nYou can:\n"
-            "- **Accept** this ensemble → `PUT /forge/intake/{session_id}/theories/accept`\n"
-            "- **Customize** → `PUT /forge/intake/{session_id}/theories/custom` "
-            "with `{\"theories\": [{\"theory_id\": \"...\", \"priority\": 0}]}`\n"
-            "- Run **both** for comparison once you launch via `POST /simulations`\n\n"
-            "What would you like to change, or shall I proceed with the recommended ensemble?"
+            "\n\nReview the theory cards in the panel. You can:\n"
+            "- **Accept** the recommended ensemble as-is\n"
+            "- **Customize** — add, remove, or reorder theories from the library\n"
+            "- **Run both** for side-by-side comparison\n\n"
+            "When ready, hit **Go** to launch."
         )
         reply = "\n".join(lines)
         session.add_message(MessageRole.ASSISTANT, reply)
         return reply
+
+    async def _add_application_notes(self, session: ForgeSession) -> None:
+        """
+        Add application_note to each recommended theory via a single haiku call.
+        Explains how each theory specifically applies to this SimSpec.
+        """
+        recs = session.recommended_theories
+        if not recs:
+            return
+
+        spec = session.simspec
+        outcome_focus = (spec.metadata or {}).get("outcome_focus", "") if spec else ""
+        actors_str = ", ".join(a.name for a in spec.actors[:5]) if spec and spec.actors else "unknown actors"
+
+        theory_list = "\n".join(
+            f"{i+1}. {r['theory_id']}: {r.get('rationale', '')}"
+            for i, r in enumerate(recs)
+        )
+
+        prompt = f"""Scenario: {spec.name if spec else 'Unknown'}
+Domain: {spec.domain if spec else 'unknown'}
+Outcome focus: {outcome_focus}
+Key actors: {actors_str}
+
+Theory ensemble:
+{theory_list}
+
+For each theory, write a 1-2 sentence "application note" explaining HOW it specifically
+applies to this scenario — in consulting language, not technical parameters.
+Connect the theory mechanism to the actual actors and outcome focus.
+
+Return JSON: {{"notes": ["note for theory 1", "note for theory 2", ...]}}
+One note per theory in the same order. Return ONLY valid JSON."""
+
+        try:
+            resp = self._client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=600,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = resp.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            notes = json.loads(raw).get("notes", [])
+            for i, note in enumerate(notes):
+                if i < len(recs):
+                    recs[i]["application_note"] = note
+            logger.info("_add_application_notes: enriched %d theories", len(notes))
+        except Exception as exc:
+            logger.warning("_add_application_notes failed: %s", exc)
 
     async def _finalize_ensemble(self, session: ForgeSession) -> str:
         """

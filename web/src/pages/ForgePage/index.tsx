@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { forgeApi, simApi, streamForgeMessage } from '../../api'
+import { forgeApi, simApi, streamForgeMessage, theoryApi } from '../../api'
 import { useForgeStore } from '../../stores/forgeStore'
+
+type RunMode = 'recommended' | 'custom' | 'both'
+type Theory = { theory_id: string; display_name: string; score: number; rationale: string; application_note?: string; source?: string; domains?: string[] }
 
 export function ForgePage() {
   const { session, messages, streaming, runs,
@@ -12,6 +15,13 @@ export function ForgePage() {
   const [intakeText, setIntakeText] = useState('')
   const [starting, setStarting] = useState(false)
   const [launching, setLaunching] = useState(false)
+  const [generatingAssessment, setGeneratingAssessment] = useState(false)
+  const [assessmentDone, setAssessmentDone] = useState(false)
+  const [runMode, setRunMode] = useState<RunMode>('recommended')
+  const [customTheories, setCustomTheories] = useState<Theory[]>([])
+  const [buildingCustom, setBuildingCustom] = useState(false)
+  const [libraryTheories, setLibraryTheories] = useState<Theory[]>([])
+  const [libraryOpen, setLibraryOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const cancelStreamRef = useRef<(() => void) | null>(null)
 
@@ -34,6 +44,20 @@ export function ForgePage() {
     return () => clearInterval(interval)
   }, [runs])
 
+  // When entering ensemble_review, load library for custom builder
+  useEffect(() => {
+    if (session?.state === 'ensemble_review' || session?.state === 'complete') {
+      theoryApi.list().then(r => setLibraryTheories(r.theories ?? [])).catch(() => {})
+    }
+  }, [session?.state])
+
+  // Initialise custom theories from recommended when entering custom mode
+  useEffect(() => {
+    if (buildingCustom && session?.recommended_theories && customTheories.length === 0) {
+      setCustomTheories(session.recommended_theories.map((t: Theory) => ({ ...t })))
+    }
+  }, [buildingCustom])
+
   const handleStart = async () => {
     if (!intakeText.trim()) return
     setStarting(true)
@@ -49,7 +73,7 @@ export function ForgePage() {
         session_id,
         intakeText,
         (chunk) => updateLastAssistantMessage(chunk),
-        async (state) => {
+        async (_state) => {
           finalizeLastAssistantMessage()
           setStreaming(false)
           const updated = await forgeApi.getSession(session_id)
@@ -78,7 +102,7 @@ export function ForgePage() {
       session.session_id,
       msg,
       (chunk) => updateLastAssistantMessage(chunk),
-      async (state) => {
+      async (_state) => {
         finalizeLastAssistantMessage()
         setStreaming(false)
         const updated = await forgeApi.getSession(session.session_id)
@@ -92,11 +116,35 @@ export function ForgePage() {
     )
   }
 
+  const handleGenerateAssessment = async () => {
+    if (!session) return
+    setGeneratingAssessment(true)
+    try {
+      await forgeApi.generateAssessment(session.session_id)
+      setAssessmentDone(true)
+      const updated = await forgeApi.getSession(session.session_id)
+      setSession(updated)
+    } catch (e) {
+      console.error('Assessment generation failed', e)
+    } finally {
+      setGeneratingAssessment(false)
+    }
+  }
+
+  const handleSaveCustom = async () => {
+    if (!session) return
+    await forgeApi.setCustomEnsemble(session.session_id, customTheories.map((t, i) => ({
+      theory_id: t.theory_id, priority: i, parameters: {}
+    })))
+    const updated = await forgeApi.getSession(session.session_id)
+    setSession(updated)
+  }
+
   const handleLaunch = async () => {
     if (!session) return
     setLaunching(true)
     try {
-      const result = await simApi.launch(session.session_id)
+      const result = await simApi.launch(session.session_id, runMode)
       for (const { sim_id, ensemble_type } of result.launched) {
         addRun({
           sim_id,
@@ -123,7 +171,8 @@ export function ForgePage() {
     complete: 'Complete',
   }
 
-  const canLaunch = session?.state === 'ensemble_review' || session?.state === 'complete'
+  const inEnsembleReview = session?.state === 'ensemble_review' || session?.state === 'complete'
+  const hasCustom = session?.custom_theories != null && session.custom_theories.length > 0
 
   // ── Pre-session intake form ────────────────────────────────────────────────
   if (!session) {
@@ -137,7 +186,7 @@ export function ForgePage() {
           </p>
           <textarea
             className="input min-h-[120px] resize-none mb-3"
-            placeholder="Describe your scenario... e.g. 'Model the competitive dynamics in the US generic pharmaceuticals market following proposed FDA biosimilar approval reforms.'"
+            placeholder="Describe your scenario..."
             value={intakeText}
             onChange={(e) => setIntakeText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && e.metaKey) handleStart() }}
@@ -154,12 +203,221 @@ export function ForgePage() {
     )
   }
 
-  // ── Active session ─────────────────────────────────────────────────────────
+  // ── Ensemble Review + Go Page ──────────────────────────────────────────────
+  if (inEnsembleReview) {
+    const recs: Theory[] = session.recommended_theories ?? []
+    return (
+      <div className="flex h-full overflow-hidden">
+        {/* Left: theory cards */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-y-auto p-6 space-y-6">
+
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-text-primary">Theory Ensemble</h2>
+              <p className="text-xs text-text-secondary mt-0.5">
+                {recs.length} modules recommended · {session.research_context?.library_additions?.length ?? 0} newly discovered
+              </p>
+            </div>
+            <button className="text-xs text-text-secondary hover:text-danger" onClick={reset}>
+              New session
+            </button>
+          </div>
+
+          {/* Recommended theory cards */}
+          <div>
+            <p className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-3">Recommended</p>
+            <div className="space-y-3">
+              {recs.map((t, i) => (
+                <TheoryCard key={t.theory_id} theory={t} rank={i + 1} />
+              ))}
+            </div>
+          </div>
+
+          {/* Custom ensemble builder */}
+          <div className="border border-border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-medium text-text-primary">Custom Ensemble</p>
+                <p className="text-xs text-text-secondary">
+                  {hasCustom
+                    ? `${session.custom_theories!.length} theories configured`
+                    : 'Start from recommended and customise'}
+                </p>
+              </div>
+              <button
+                className="btn-primary text-xs py-1 px-3"
+                onClick={() => setBuildingCustom(!buildingCustom)}
+              >
+                {buildingCustom ? 'Close' : hasCustom ? 'Edit custom' : 'Build custom'}
+              </button>
+            </div>
+
+            {buildingCustom && (
+              <div className="space-y-3 mt-3 border-t border-border pt-3">
+                <p className="text-xs text-text-secondary">Drag to reorder · click × to remove</p>
+                <div className="space-y-2">
+                  {customTheories.map((t, i) => (
+                    <div key={t.theory_id} className="flex items-center gap-2 bg-bg rounded px-3 py-2 text-xs">
+                      <span className="text-text-secondary w-5 shrink-0">{i + 1}</span>
+                      <span className="flex-1 font-medium text-text-primary">{t.display_name}</span>
+                      <span className="text-text-secondary/60 badge-gray">{t.theory_id}</span>
+                      <button
+                        className="text-text-secondary hover:text-danger ml-2"
+                        onClick={() => setCustomTheories(prev => prev.filter((_, j) => j !== i))}
+                      >×</button>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  className="text-xs text-accent hover:underline"
+                  onClick={() => setLibraryOpen(!libraryOpen)}
+                >
+                  {libraryOpen ? '− Hide library' : '+ Add from library'}
+                </button>
+
+                {libraryOpen && (
+                  <div className="grid grid-cols-2 gap-2 mt-2 max-h-48 overflow-y-auto">
+                    {libraryTheories
+                      .filter(lt => !customTheories.find(ct => ct.theory_id === lt.theory_id))
+                      .map(lt => (
+                        <button
+                          key={lt.theory_id}
+                          className="text-left text-xs bg-surface border border-border rounded px-2 py-1.5 hover:border-accent"
+                          onClick={() => setCustomTheories(prev => [...prev, lt as Theory])}
+                        >
+                          <span className="font-medium text-text-primary block">{lt.theory_id.replace(/_/g, ' ')}</span>
+                          <span className="text-text-secondary">{(lt.domains ?? []).join(', ')}</span>
+                        </button>
+                      ))}
+                  </div>
+                )}
+
+                <button className="btn-primary text-xs w-full" onClick={handleSaveCustom}>
+                  Save custom ensemble
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Assessment generation */}
+          <div className="border border-border rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-text-primary">Assessment Document</p>
+                <p className="text-xs text-text-secondary">
+                  {assessmentDone || session.assessment_path
+                    ? '✓ Generated — MD + PDF ready'
+                    : 'Generate scenario assessment (MD + PDF)'}
+                </p>
+              </div>
+              <button
+                className="btn-primary text-xs py-1 px-3"
+                onClick={handleGenerateAssessment}
+                disabled={generatingAssessment || !!(assessmentDone || session.assessment_path)}
+              >
+                {generatingAssessment ? 'Generating…' : assessmentDone || session.assessment_path ? 'Generated' : 'Generate'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Go panel */}
+        <div className="w-80 border-l border-border flex flex-col shrink-0">
+          <div className="px-4 py-3 border-b border-border">
+            <h3 className="text-xs font-medium text-text-secondary uppercase tracking-wider">Launch</h3>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+
+            {/* SimSpec summary */}
+            <div className="space-y-2 text-xs">
+              <p className="text-text-secondary font-medium">{session.simspec?.name || '—'}</p>
+              <div className="space-y-1 text-text-secondary">
+                <p>Domain: <span className="text-text-primary">{session.simspec?.domain || '—'}</span></p>
+                <p>Actors: <span className="text-text-primary">{session.simspec?.actors?.length ?? 0}</span></p>
+                <p>Horizon: <span className="text-text-primary">{(session.simspec?.timeframe as any)?.total_ticks ?? 0} {(session.simspec?.timeframe as any)?.tick_unit ?? 'months'}</span></p>
+              </div>
+            </div>
+
+            <div className="border-t border-border pt-3">
+              <p className="text-xs font-medium text-text-secondary mb-2">Run mode</p>
+              <div className="space-y-2">
+                {(['recommended', 'custom', 'both'] as RunMode[]).map(mode => {
+                  const disabled = mode === 'custom' && !hasCustom
+                  const label = {
+                    recommended: `Recommended (${recs.length} theories)`,
+                    custom: hasCustom
+                      ? `Custom (${session.custom_theories?.length ?? 0} theories)`
+                      : 'Custom — not yet built',
+                    both: 'Both (parallel comparison)',
+                  }[mode]
+                  return (
+                    <label key={mode} className={`flex items-start gap-2 text-xs cursor-pointer ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                      <input
+                        type="radio"
+                        name="run_mode"
+                        value={mode}
+                        checked={runMode === mode}
+                        disabled={disabled}
+                        onChange={() => setRunMode(mode)}
+                        className="mt-0.5"
+                      />
+                      <span className="text-text-primary">{label}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Ensemble summaries */}
+            <div className="border-t border-border pt-3 space-y-3">
+              <EnsembleSummary label="Recommended" theories={recs} active={runMode !== 'custom'} />
+              {hasCustom && (
+                <EnsembleSummary label="Custom" theories={session.custom_theories ?? []} active={runMode !== 'recommended'} />
+              )}
+            </div>
+
+            {/* Simulation runs status */}
+            {runs.length > 0 && (
+              <div className="border-t border-border pt-3 space-y-2">
+                <p className="text-xs font-medium text-text-secondary">Runs</p>
+                {runs.map(run => (
+                  <div key={run.sim_id} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-text-secondary">{run.sim_id.slice(0, 8)}</span>
+                      <span className="badge-gray">{run.ensemble_type}</span>
+                    </div>
+                    <span className={
+                      run.status === 'complete' ? 'badge-green' :
+                      run.status === 'error' ? 'badge-red' : 'badge-yellow'
+                    }>{run.status}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="p-4 border-t border-border">
+            <button
+              className="btn-success w-full"
+              onClick={handleLaunch}
+              disabled={launching || (runMode === 'custom' && !hasCustom)}
+            >
+              {launching ? 'Launching…' : '▶ Go'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Active interview session ───────────────────────────────────────────────
   return (
     <div className="flex h-full overflow-hidden">
       {/* Chat panel */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Session status bar */}
+        {/* Status bar */}
         <div className="border-b border-border px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-xs text-text-secondary font-mono">{session.session_id.slice(0, 8)}</span>
@@ -216,30 +474,6 @@ export function ForgePage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Simulation runs */}
-        {runs.length > 0 && (
-          <div className="border-t border-border px-4 py-3 space-y-2">
-            {runs.map((run) => (
-              <div key={run.sim_id} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-text-secondary">{run.sim_id.slice(0, 8)}</span>
-                  <span className="badge-gray">{run.ensemble_type}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {run.status === 'complete' && run.results && (
-                    <span className="text-text-secondary">{run.results.ticks} ticks</span>
-                  )}
-                  <span className={
-                    run.status === 'complete' ? 'badge-green' :
-                    run.status === 'error' ? 'badge-red' :
-                    'badge-yellow'
-                  }>{run.status}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
         {/* Input */}
         <div className="border-t border-border p-4 flex gap-3">
           <input
@@ -250,15 +484,6 @@ export function ForgePage() {
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) handleSend() }}
             disabled={streaming}
           />
-          {canLaunch && (
-            <button
-              className="btn-success shrink-0"
-              onClick={handleLaunch}
-              disabled={launching}
-            >
-              {launching ? 'Launching...' : '▶ Launch sim'}
-            </button>
-          )}
           <button
             className="btn-primary shrink-0"
             onClick={handleSend}
@@ -295,39 +520,13 @@ export function ForgePage() {
                 <p className="text-text-secondary mb-1">Theories</p>
                 <p className="text-text-primary">{(session.simspec.theories as unknown[])?.length ?? 0}</p>
               </div>
-              <div>
-                <p className="text-text-secondary mb-1">Metrics</p>
-                <p className="text-text-primary">{(session.simspec.metrics as unknown[])?.length ?? 0}</p>
-              </div>
             </>
           )}
 
-          {session.simspec && (session.simspec.theories as unknown[])?.length > 0 && (
-            <div>
-              <p className="text-text-secondary mb-1">Theory ensemble</p>
-              <div className="space-y-1">
-                {(session.simspec.theories as Array<{ theory_id: string; priority: number; parameters: Record<string, unknown> }>).map((t) => (
-                  <code key={t.theory_id} className="block font-mono text-accent/80 bg-bg px-2 py-1 rounded">
-                    {t.theory_id}
-                  </code>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {session.research_context?.library_additions?.length > 0 && (
-            <div>
-              <p className="text-text-secondary mb-1">Auto-discovered</p>
-              {session.research_context.library_additions.map((id: string) => (
-                <span key={id} className="block badge-green mb-1">{id}</span>
-              ))}
-            </div>
-          )}
-
-          {(session.gaps?.filter(g => !g.filled) ?? []).length > 0 && (
+          {(session.gaps?.filter((g: any) => !g.filled) ?? []).length > 0 && (
             <div>
               <p className="text-text-secondary mb-1">Open gaps</p>
-              {session.gaps.filter(g => !g.filled).map(g => (
+              {session.gaps.filter((g: any) => !g.filled).map((g: any) => (
                 <div key={g.field_path} className="text-text-secondary/70 mb-1">
                   · {g.field_path}
                 </div>
@@ -335,6 +534,61 @@ export function ForgePage() {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Theory card component ─────────────────────────────────────────────────────
+
+function TheoryCard({ theory, rank }: { theory: Theory; rank: number }) {
+  const [expanded, setExpanded] = useState(false)
+  const isNew = theory.source === 'discovered'
+  return (
+    <div className="border border-border rounded-lg p-4 bg-surface">
+      <div className="flex items-start gap-3">
+        <span className="text-lg font-bold text-text-secondary/40 w-6 shrink-0 leading-none mt-0.5">{rank}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="font-medium text-text-primary text-sm">{theory.display_name}</span>
+            {isNew && <span className="badge-green text-xs">New</span>}
+            <span className="ml-auto text-xs text-text-secondary font-mono">{theory.score.toFixed(2)}</span>
+          </div>
+          <p className="text-xs text-text-secondary leading-relaxed">
+            {theory.application_note || theory.rationale}
+          </p>
+          {theory.rationale && theory.application_note && (
+            <button
+              className="text-xs text-accent/70 hover:text-accent mt-1"
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? '− less' : '+ rationale'}
+            </button>
+          )}
+          {expanded && (
+            <p className="text-xs text-text-secondary/70 italic mt-1 leading-relaxed border-l border-border pl-2">
+              {theory.rationale}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Ensemble summary component ────────────────────────────────────────────────
+
+function EnsembleSummary({ label, theories, active }: { label: string; theories: Theory[]; active: boolean }) {
+  return (
+    <div className={`rounded border text-xs p-3 ${active ? 'border-accent/40 bg-accent/5' : 'border-border opacity-50'}`}>
+      <p className="font-medium text-text-primary mb-1">{label} <span className="text-text-secondary font-normal">({theories.length} theories)</span></p>
+      <div className="space-y-0.5">
+        {theories.slice(0, 4).map(t => (
+          <p key={t.theory_id} className="text-text-secondary truncate">· {t.display_name || t.theory_id}</p>
+        ))}
+        {theories.length > 4 && (
+          <p className="text-text-secondary/60">+{theories.length - 4} more</p>
+        )}
       </div>
     </div>
   )

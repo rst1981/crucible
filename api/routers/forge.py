@@ -270,6 +270,37 @@ async def set_custom_ensemble(session_id: str, body: CustomEnsembleRequest) -> d
     }
 
 
+# ── Assessment generation ─────────────────────────────────────────────────────
+
+@router.post("/intake/{session_id}/assessment", status_code=200)
+async def generate_assessment(session_id: str) -> dict:
+    """
+    Generate assessment MD + PDF for a session.
+    Session must have reached ensemble_review or complete state.
+    Returns paths to generated files.
+    """
+    session = _get_session(session_id)
+    if not session.recommended_theories:
+        raise HTTPException(
+            status_code=409,
+            detail="Ensemble not yet generated. Session must reach ensemble_review state.",
+        )
+    try:
+        from forge.assessment_generator import generate_assessment as _gen
+        md_path, pdf_path = await asyncio.to_thread(_gen, session)
+        session.assessment_path = str(md_path)
+        return {
+            "session_id":   session_id,
+            "md_path":      str(md_path),
+            "pdf_path":     str(pdf_path),
+            "md_exists":    md_path.exists(),
+            "pdf_exists":   pdf_path.exists(),
+        }
+    except Exception as exc:
+        logger.exception("Assessment generation failed for session %s", session_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 # ── Theory library / pending queue routes ──────────────────────────────────────
 
 @router.get("/theories/library")

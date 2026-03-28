@@ -25,11 +25,14 @@ export interface TheoryDetail extends TheorySummary {
 
 export interface TheoryRecommendation {
   theory_id: string
-  name: string
-  domains: string[]
-  description: string
-  reasoning: string
-  confidence: number
+  display_name: string
+  score: number
+  rationale: string
+  application_note?: string
+  source?: string
+  domains?: string[]
+  suggested_priority?: number
+  parameters?: Record<string, unknown>
 }
 
 export interface EnsembleSummary {
@@ -84,8 +87,9 @@ export interface ForgeSession {
     library_additions: string[]
     library_gaps: string[]
   }
-  recommended_theories: TheoryRecommendation[] | null
+  recommended_theories: TheoryRecommendation[]
   custom_theories: TheoryRecommendation[] | null
+  assessment_path: string | null
 }
 
 export interface SimulationRun {

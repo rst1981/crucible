@@ -134,6 +134,7 @@ class ForgeSession:
     recommended_theories: list[dict]        = field(default_factory=list)
     custom_theories:      list[dict] | None = None   # None = not yet customized
     deep_dive_complete:   bool              = False  # True after outcome_focus deep-dive has run
+    assessment_path:      str | None       = None   # path to generated assessment .md
 
     def open_gaps(self) -> list[SpecGap]:
         """Return unfilled gaps ordered by priority descending."""
@@ -174,5 +175,6 @@ class ForgeSession:
                 m.to_dict() for m in self.conversation_history
                 if m.role in (MessageRole.USER, MessageRole.ASSISTANT)
             ],
-            "research": self.research_context.to_dict(),
+            "research":              self.research_context.to_dict(),
+            "assessment_path":       self.assessment_path,
         }
