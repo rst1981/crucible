@@ -301,6 +301,78 @@ async def generate_assessment(session_id: str) -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ── Gap research endpoint ─────────────────────────────────────────────────────
+
+@router.post("/intake/{session_id}/research-gaps")
+async def research_gaps(session_id: str, request: Request):
+    """
+    Trigger a targeted gap research pass and stream the results via SSE.
+    Requires the assessment to have been generated first (session.data_gaps populated).
+
+    SSE event format:
+        data: {"type": "chunk",  "text": "..."}
+        data: {"type": "done",   "session": {...}}
+        data: {"type": "error",  "detail": "..."}
+    """
+    session = _get_session(session_id)
+
+    async def event_stream():
+        try:
+            chunk_queue: asyncio.Queue = asyncio.Queue()
+
+            async def _drain():
+                try:
+                    async for chunk in _agent.run_gap_research(session):
+                        await chunk_queue.put(("chunk", chunk))
+                    await chunk_queue.put(("done", None))
+                except Exception as exc:  # noqa: BLE001
+                    await chunk_queue.put(("error", exc))
+
+            drain_task = asyncio.create_task(_drain())
+
+            while True:
+                try:
+                    kind, value = await asyncio.wait_for(
+                        chunk_queue.get(), timeout=15.0
+                    )
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+                    continue
+
+                if kind == "done":
+                    break
+                if kind == "error":
+                    raise value  # type: ignore[misc]
+
+                chunk: str = value  # type: ignore[assignment]
+                payload = json.dumps({"type": "chunk", "text": chunk})
+                yield f"data: {payload}\n\n"
+                if await request.is_disconnected():
+                    logger.info("Client disconnected during gap research for session %s", session_id)
+                    drain_task.cancel()
+                    return
+
+            done_payload = json.dumps({
+                "type":    "done",
+                "session": session.to_dict(),
+            })
+            yield f"data: {done_payload}\n\n"
+
+        except Exception as exc:
+            logger.exception("Error in gap research for session %s", session_id)
+            error_payload = json.dumps({"type": "error", "detail": str(exc)})
+            yield f"data: {error_payload}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":    "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 # ── Theory library / pending queue routes ──────────────────────────────────────
 
 @router.get("/theories/library")

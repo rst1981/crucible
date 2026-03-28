@@ -19,7 +19,7 @@ h1 {
   font-size: 20px;
   font-weight: 700;
   margin-bottom: 4px;
-  border-bottom: 2px solid #1a1a1a;
+  border-bottom: 2px solid #3a3a3a;
   padding-bottom: 6px;
 }
 
@@ -28,7 +28,7 @@ h2 {
   font-weight: 700;
   margin-top: 24px;
   margin-bottom: 6px;
-  border-bottom: 1px solid #ccc;
+  border-bottom: 1px solid #c8c8c8;
   padding-bottom: 3px;
 }
 
@@ -61,25 +61,25 @@ table {
 }
 
 th, td {
-  border: 1px solid #bbb;
+  border: 1px solid #c8c8c8;
   padding: 4px 7px;
   vertical-align: top;
 }
 
 th {
-  background: #eef0f3;
+  background: #eeeeee;
   font-weight: 700;
   text-align: left;
 }
 
 tr:nth-child(even) td {
-  background: #f9f9fb;
+  background: #f8f8f8;
 }
 
 /* --- Code blocks --- */
 pre {
-  background: #f4f4f6;
-  border: 1px solid #d0d0d8;
+  background: #f4f4f4;
+  border: 1px solid #d0d0d0;
   border-radius: 3px;
   padding: 8px 10px;
   font-size: 8.5px;
@@ -92,7 +92,7 @@ pre {
 code {
   font-family: 'Courier New', Courier, monospace;
   font-size: 9px;
-  background: #f0f0f4;
+  background: #efefef;
   padding: 1px 3px;
   border-radius: 2px;
 }
@@ -116,12 +116,12 @@ li {
 
 /* --- Blockquotes (used for notes/callouts) --- */
 blockquote {
-  border-left: 3px solid #888;
+  border-left: 3px solid #a0a8a8;
   margin: 8px 0;
   padding: 4px 10px;
-  color: #444;
+  color: #444444;
   font-style: italic;
-  background: #f8f8fa;
+  background: #f6f6f6;
 }
 
 /* --- Horizontal rules --- */
@@ -133,7 +133,7 @@ hr {
 
 /* --- Links --- */
 a {
-  color: #2563eb;
+  color: #4a6a7a;
   text-decoration: none;
 }
 

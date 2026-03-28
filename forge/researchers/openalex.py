@@ -6,7 +6,8 @@ No API key required. Generous rate limits (~10 req/sec).
 Strong coverage: economics, political science, energy, IR, finance.
 
 API docs: https://docs.openalex.org/
-Polite pool (faster): add your email via OPENALEX_EMAIL env var.
+Polite pool (faster): set OPENALEX_EMAIL env var (adds mailto= param).
+API key (higher rate limits): set OPENALEX_API_KEY env var (adds api_key= param).
 """
 from __future__ import annotations
 
@@ -23,10 +24,15 @@ _BASE_URL = "https://api.openalex.org"
 class OpenAlexAdapter(BaseAdapter):
     SOURCE_TYPE = "openalex"
 
-    def __init__(self, client: httpx.AsyncClient, email: str | None = None) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        email: str | None = None,
+        api_key: str | None = None,
+    ) -> None:
         self._client = client
-        # Email enables the "polite pool" — faster, more reliable
         self._email = email or os.environ.get("OPENALEX_EMAIL", "")
+        self._api_key = api_key or os.environ.get("OPENALEX_API_KEY", "")
 
     async def fetch(
         self,
@@ -40,7 +46,9 @@ class OpenAlexAdapter(BaseAdapter):
             "select": "id,title,abstract_inverted_index,publication_year,authorships,primary_location,open_access,concepts",
             "sort": "relevance_score:desc",
         }
-        if self._email:
+        if self._api_key:
+            params["api_key"] = self._api_key
+        elif self._email:
             params["mailto"] = self._email
 
         try:

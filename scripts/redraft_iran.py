@@ -138,6 +138,7 @@ def build_session() -> ForgeSession:
     # ── Research context ─────────────────────────────────────────────────────
     ctx = ResearchContext(session_id="iran-redraft")
     ctx.research_complete = True
+    ctx.library_gaps = ["iran_growth_accounting"]
     ctx.theory_candidates = [
         "fearon_bargaining", "richardson_arms_race", "wittman_zartman",
         "keynesian_multiplier", "sir_contagion", "minsky_instability",

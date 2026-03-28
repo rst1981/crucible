@@ -48,36 +48,37 @@ FEEDS_BY_CATEGORY: dict[str, list[str]] = {
         "https://www.aljazeera.com/xml/rss/all.xml",                  # Al Jazeera
         "https://foreignpolicy.com/feed/",                            # Foreign Policy
         "https://thediplomat.com/feed/",                              # The Diplomat (Asia-Pacific)
-        "https://www.foreignaffairs.com/rss.xml",                     # Foreign Affairs
-        "https://www.chathamhouse.org/rss.xml",                       # Chatham House
+        "https://www.foreignaffairs.com/rss.xml",                       # Foreign Affairs
+        # Chatham House → 403 blocked
         "https://www.crisisgroup.org/rss.xml",                        # ICG (conflict regions)
         "https://carnegieendowment.org/rss/",                         # Carnegie Endowment
-        "https://www.cfr.org/rss/world",                              # Council on Foreign Relations
+        # CFR dropped RSS entirely — no working feed as of 2026-03
     ],
     "defense": [
         "https://www.defensenews.com/arc/outboundfeeds/rss/",         # Defense News
         "https://www.csis.org/rss.xml",                               # CSIS
-        "https://www.rand.org/news/press.rss",                        # RAND
-        "https://www.iiss.org/rss",                                   # IISS
-        "https://www.belfercenter.org/rss.xml",                       # Belfer Center (Harvard)
+        # RAND → 403 blocked
+        # IISS → 403 blocked
+        # Belfer Center → 404
         "https://warontherocks.com/feed/",                            # War on the Rocks
-        "https://www.nato.int/cps/en/natohq/news.rss",                # NATO press (updated URL)
+        "https://www.defenseone.com/rss/all/",                        # Defense One (NATO RSS dropped)
     ],
     "economics": [
         "https://www.ft.com/rss/home/uk",                              # Financial Times
         "https://www.imf.org/en/Blogs/rss",                           # IMF Blog
         "https://www.brookings.edu/feed/",                            # Brookings (all topics)
-        "https://www.piie.com/rss.xml",                               # Peterson Institute
-        "https://www.nber.org/rss/new_working_papers.xml",            # NBER Working Papers
+        # PIIE → 403 blocked
+        # NBER → 403 blocked
+        "https://cepr.org/rss.xml",                                   # CEPR / VoxEU
         "https://www.project-syndicate.org/rss",                      # Project Syndicate
         "https://www.economist.com/finance-and-economics/rss.xml",    # Economist Finance
     ],
     "energy": [
         "https://oilprice.com/rss/main",                              # OilPrice
         "https://www.eia.gov/rss/todayinenergy.xml",                  # EIA Today in Energy
-        "https://www.iea.org/news.rss",                               # IEA
+        # IEA → 403 blocked
         "https://www.ogj.com/rss",                                    # Oil & Gas Journal
-        "https://www.energymonitor.ai/feed/",                         # Energy Monitor
+        # Energy Monitor → 403 blocked
     ],
     "corporate": [
         "https://www.ft.com/rss/home/uk",                              # FT (shared)
@@ -91,11 +92,12 @@ FEEDS_BY_CATEGORY: dict[str, list[str]] = {
     ],
     "think_tanks": [
         "https://carnegieendowment.org/rss/",                         # Carnegie (shared)
-        "https://www.chathamhouse.org/rss.xml",                       # Chatham House (shared)
+        # Chatham House → 403 blocked
         "https://www.csis.org/rss.xml",                               # CSIS (shared)
-        "https://www.rand.org/news/press.rss",                        # RAND (shared)
+        # RAND → 403 blocked
+        "https://sipri.org/news/rss",                                 # SIPRI (Stockholm Peace Research)
         "https://ips-dc.org/feed/",                                   # Institute for Policy Studies
-        "https://www.wilsoncenter.org/rss.xml",                       # Wilson Center
+        # Wilson Center → 404
     ],
     "conflict": [
         "https://www.crisisgroup.org/rss.xml",                        # ICG (shared)

@@ -73,8 +73,8 @@ def generate_assessment(session: "ForgeSession") -> tuple[pathlib.Path, pathlib.
 # ── Chart generation ────────────────────────────────────────────────────────
 
 PALETTE = [
-    "#2563EB", "#16A34A", "#DC2626", "#7C3AED", "#F97316",
-    "#0891B2", "#854D0E", "#BE185D", "#B45309", "#4B5563",
+    "#6B7F8C", "#8A9E8A", "#7A8A9E", "#9E9A8A", "#6A8A8A",
+    "#8A8A9E", "#9E8A8A", "#7A9A8A", "#8A9A9E", "#909090",
 ]
 STYLE = {"dpi": 150, "bbox_inches": "tight"}
 
@@ -113,8 +113,16 @@ def _apply_rcparams():
         "axes.spines.top": False,
         "axes.spines.right": False,
         "axes.grid": True,
-        "grid.alpha": 0.3,
+        "grid.alpha": 0.25,
         "grid.linestyle": "--",
+        "grid.color": "#d0d4d8",
+        "axes.facecolor": "#f8f8f8",
+        "figure.facecolor": "#ffffff",
+        "axes.edgecolor": "#c8cacf",
+        "xtick.color": "#4a4a4a",
+        "ytick.color": "#4a4a4a",
+        "axes.labelcolor": "#4a4a4a",
+        "text.color": "#2a2a2a",
     })
     return plt
 
@@ -126,8 +134,8 @@ def _generate_charts(session: "ForgeSession", charts_dir: pathlib.Path) -> list[
     try:
         plt = _apply_rcparams()
 
-        # Chart 1: Theory ensemble scores (kept for backward-compat with tests)
-        recs = session.recommended_theories
+        # Chart 1: Theory ensemble scores (both tiers)
+        recs = session.recommended_theories + (session.discovered_theories or [])
         if recs:
             fig, ax = plt.subplots(figsize=(8, max(3, len(recs) * 0.6)))
             names = [r["display_name"] for r in recs]
@@ -153,7 +161,7 @@ def _generate_charts(session: "ForgeSession", charts_dir: pathlib.Path) -> list[
             vals = [calib[k] for k in keys]
             short_keys = [k.replace("global__", "").replace("_", " ") for k in keys]
             colors = [
-                "#DC2626" if v > 0.7 else "#2563EB" if v < 0.5 else "#16A34A"
+                "#5A7A8A" if v > 0.7 else "#A0A8A0" if v < 0.5 else "#8A9E8A"
                 for v in vals
             ]
             fig, ax = plt.subplots(figsize=(8, max(3, len(keys) * 0.5)))
@@ -182,7 +190,8 @@ def _build_markdown(
 ) -> str:
     spec = session.simspec
     ctx  = session.research_context
-    recs = session.recommended_theories
+    # Combine Tier 1 (library) + Tier 2 (discovered) for the full ensemble view
+    recs = session.recommended_theories + (session.discovered_theories or [])
 
     today = date.today().strftime("%B %d, %Y")
     name  = spec.name if spec else "Unnamed Scenario"
@@ -210,8 +219,10 @@ def _build_markdown(
     sources_md      = _sources_section_v2(ctx)
     cascade_ascii   = _module_cascade_ascii(recs)
     signals_md      = _forward_signals(session)
-    library_gaps    = _library_gaps_section(ctx)
+    library_gaps    = _discovered_theories_section(ctx, recs)
     simspec_stub    = _simspec_stub(session)
+    gap_section_raw = _gap_research_section(session)
+    gap_section     = f"\n{gap_section_raw}\n" if gap_section_raw else ""
 
     # Chart embeds
     chart_embed = ""
@@ -342,7 +353,7 @@ def _build_markdown(
 {data_gaps}
 
 **Monte Carlo guidance:** {domain_mc}. Perturb: {sensitivity_params}. Horizon: {ticks} {tick_unit}s. Run 1 deterministic baseline first, then launch MC.
-{custom_note}
+{custom_note}{gap_section}
 
 ---
 
@@ -385,8 +396,9 @@ def _generate_prose(session: "ForgeSession") -> tuple[str, str]:
                 snippets_list.append(getattr(r, 'to_context_snippet', lambda: str(r))())
     snippets = "\n\n".join(snippets_list)[:4000]
 
-    theory_ids = ", ".join(r["theory_id"] for r in session.recommended_theories)
-    theory_names = ", ".join(r["display_name"] for r in session.recommended_theories)
+    all_recs = session.recommended_theories + (session.discovered_theories or [])
+    theory_ids = ", ".join(r["theory_id"] for r in all_recs)
+    theory_names = ", ".join(r["display_name"] for r in all_recs)
     actor_names = ", ".join(a.name for a in spec.actors) if spec and spec.actors else "none"
 
     context = f"""Scenario: {spec.name if spec else 'Unnamed'}
@@ -455,8 +467,10 @@ Write in a direct, analytical consulting voice. No fluff. Return ONLY valid JSON
                 item if str(item).startswith("-") else f"- {item}"
                 for item in data_gaps_raw
             )
+            session.data_gaps = [str(item).lstrip("- ").strip() for item in data_gaps_raw]
         else:
             data_gaps = data_gaps_raw
+            session.data_gaps = []
 
         # Stash full prose data on session for use in richer sections
         try:
@@ -471,8 +485,36 @@ Write in a direct, analytical consulting voice. No fluff. Return ONLY valid JSON
         spec_name = spec.name if spec else "this scenario"
         return (
             f"This assessment covers {spec_name}. "
-            f"Research identified {len(session.recommended_theories)} relevant theory modules."
+            f"Research identified {len(session.recommended_theories) + len(session.discovered_theories or [])} relevant theory modules."
         ), "- Parameter estimates require empirical validation before launch."
+
+
+# ── Gap research section ────────────────────────────────────────────────────
+
+def _gap_research_section(session: "ForgeSession") -> str:
+    """
+    Build the gap research results section for the assessment document.
+
+    If gap_research_complete is False: returns empty string (original gaps already
+    rendered in the Data Gaps section above).
+    If True: returns a subsection showing closed vs remaining gaps.
+    """
+    if not getattr(session, "gap_research_complete", False):
+        return ""
+
+    closed = getattr(session, "closed_gaps", []) or []
+    remaining = getattr(session, "remaining_gaps", []) or []
+
+    if not closed and not remaining:
+        return ""
+
+    lines = ["### Gap Research Results\n"]
+    for gap in closed:
+        lines.append(f"- ✓ {gap}")
+    for gap in remaining:
+        lines.append(f"- ○ {gap}")
+
+    return "\n".join(lines)
 
 
 # ── Actor Data section ───────────────────────────────────────────────────────
@@ -658,19 +700,73 @@ def _find_source_for_param(param: str, ctx: Any) -> str:
 
 # ── Library gaps section ─────────────────────────────────────────────────────
 
-def _library_gaps_section(ctx: Any) -> str:
-    """Generate library gaps section if ctx has library_additions."""
-    if not ctx or not ctx.library_additions:
+def _discovered_theories_section(ctx: Any, recs: list[dict]) -> str:
+    """
+    Generate a Discovered Theories section showing:
+    - Theories auto-built from research and added to the library (library_additions)
+    - Theories extracted from papers but pending review (library_gaps)
+
+    Also flags which recommended theories are discovered (source == "discovered").
+    """
+    if not ctx:
         return ""
 
-    lines = ["## Library Gaps\n"]
-    for i, theory_id in enumerate(ctx.library_additions, 1):
-        display = theory_id.replace("_", " ").title()
-        lines.append(f"### GAP-{i}: {display} — RESOLVED")
-        lines.append(f"**Citation:** [auto-discovered via research pipeline]")
-        lines.append(f"Models dynamics related to `{theory_id}`.")
-        lines.append(f"**Relevance:** Extends simulation coverage for {theory_id.split('_')[0]}-domain effects.")
-        lines.append(f"**Library status:** `core/theories/discovered/{theory_id}.py` — AUTO-APPROVED\n")
+    additions  = ctx.library_additions or []
+    gaps       = ctx.library_gaps or []
+    discovered_recs = [r for r in recs if r.get("source") == "discovered"]
+
+    if not additions and not gaps and not discovered_recs:
+        return ""
+
+    lines = ["## Discovered Theories\n"]
+    lines.append(
+        "These theories were extracted from academic research during this session "
+        "and are scenario-specific — distinct from the generic library ensemble.\n"
+    )
+
+    if discovered_recs:
+        lines.append("### In This Ensemble\n")
+        lines.append("The following theories were discovered during research and are included in the recommended ensemble:\n")
+        for r in discovered_recs:
+            lines.append(f"- **{r['display_name']}** (`{r['theory_id']}`) — score {r['score']:.2f}")
+            note = r.get("application_note") or r.get("rationale", "")
+            if note:
+                lines.append(f"  {note}")
+        lines.append("")
+
+    if additions:
+        lines.append("### Auto-Approved & Added to Library\n")
+        lines.append(
+            "These theories passed the smoke test and were hot-loaded into "
+            "`core/theories/discovered/` during this session:\n"
+        )
+        # Try to match each addition to a research result for citation
+        for theory_id in additions:
+            display = theory_id.replace("_", " ").title()
+            citation = ""
+            if ctx.results:
+                for r in ctx.results:
+                    if getattr(r, 'ok', True):
+                        raw = str(getattr(r, 'raw', '') or '').lower()
+                        title = getattr(r, 'title', '') or ''
+                        if theory_id.replace("_", " ") in raw or theory_id in raw:
+                            citation = f"**Source:** {title}"
+                            break
+            lines.append(f"**{display}** (`{theory_id}`)")
+            if citation:
+                lines.append(citation)
+            lines.append(f"**Status:** `core/theories/discovered/{theory_id}.py` — AUTO-APPROVED\n")
+
+    if gaps:
+        lines.append("### Pending Review\n")
+        lines.append(
+            "These theories were identified in research but did not pass the automated smoke test. "
+            "Review in `data/theories/pending/` before use:\n"
+        )
+        for theory_id in gaps:
+            display = theory_id.replace("_", " ").title()
+            lines.append(f"- **{display}** (`{theory_id}`) — `data/theories/pending/`")
+        lines.append("")
 
     return "\n".join(lines)
 
@@ -679,7 +775,7 @@ def _library_gaps_section(ctx: Any) -> str:
 
 def _simspec_stub(session: "ForgeSession") -> str:
     """Generate a TheoryRef SimSpec stub from recommended theories + calibration."""
-    recs = session.recommended_theories
+    recs = session.recommended_theories + (session.discovered_theories or [])
     ctx  = session.research_context
     param_estimates = (ctx.parameter_estimates or {}) if ctx else {}
 
@@ -791,7 +887,7 @@ def _forward_signals(session: "ForgeSession") -> str:
     # Fall back to separate haiku call
     spec = session.simspec
     ctx  = session.research_context
-    recs = session.recommended_theories
+    recs = session.recommended_theories + (session.discovered_theories or [])
 
     snippets = "\n".join(
         r.to_context_snippet() for r in (ctx.results if ctx else [])[:8] if r.ok

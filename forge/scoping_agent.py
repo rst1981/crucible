@@ -452,7 +452,8 @@ class ScopingAgent:
                     source_status[label] = "ok"
 
         # Library gap fill: pass successful academic results through TheoryBuilder
-        academic = [r for r in ctx.results if r.source_type in ("arxiv", "ssrn") and r.ok]
+        # Include OpenAlex and Semantic Scholar — same academic paper corpus as arXiv/SSRN
+        academic = [r for r in ctx.results if r.source_type in ("arxiv", "ssrn", "openalex", "semantic_scholar") and r.ok]
         if academic:
             await self._fill_library_gaps(academic, ctx)
 
@@ -481,12 +482,13 @@ class ScopingAgent:
         try:
             resp = self._client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=80,
+                max_tokens=60,
                 messages=[{
                     "role": "user",
                     "content": (
-                        f"Extract 4-5 short academic search keywords from this scenario. "
-                        f"Return ONLY a JSON array of 2-4 word phrases. No explanation.\n\n"
+                        f"Extract the 3 most important academic search terms from this scenario. "
+                        f"Return ONLY a JSON array of exactly 3 short phrases (2-3 words each). "
+                        f"Prefer established academic terminology. No explanation.\n\n"
                         f"Domain: {domain}\nScenario: {intake_text[:300]}"
                     ),
                 }],
@@ -498,11 +500,14 @@ class ScopingAgent:
                     raw = raw[4:]
             keywords = json.loads(raw)
             if isinstance(keywords, list) and keywords:
-                return " ".join(str(k) for k in keywords[:5])
+                # Hard cap: max 3 phrases, max 10 words total — keeps OpenAlex queries effective
+                phrases = [str(k) for k in keywords[:3]]
+                joined = " ".join(phrases)
+                return " ".join(joined.split()[:10])
         except Exception as exc:
             logger.warning("_build_academic_query failed: %s", exc)
         # Fallback: domain + first words of intake
-        return f"{domain} {intake_text[:80]}"
+        return f"{domain} {' '.join(intake_text.split()[:5])}"
 
     async def _fill_library_gaps(
         self,
@@ -982,20 +987,22 @@ Do NOT mention tool parameters or code. Write for a strategy consultant, not a d
         # in the mapper's candidate pool (they're already registered).
         recommendations = self._theory_mapper.recommend_from_spec(session.simspec)
 
-        # Store recommendations on session — do NOT commit to simspec.theories yet.
-        # The consultant reviews and optionally edits before finalizing.
-        session.recommended_theories = [
+        # Split into Tier 1 (library) and Tier 2 (discovered this session).
+        # discovered theories have source == "discovered" from TheoryMapper.
+        all_recs = [
             {
-                "theory_id":         r.theory_id,
-                "display_name":      r.display_name,
-                "score":             r.score,
-                "rationale":         r.rationale,
+                "theory_id":          r.theory_id,
+                "display_name":       r.display_name,
+                "score":              r.score,
+                "rationale":          r.rationale,
                 "suggested_priority": r.suggested_priority,
-                "domains":           r.domains,
-                "source":            r.source,
+                "domains":            r.domains,
+                "source":             r.source,
             }
             for r in recommendations
         ]
+        session.recommended_theories = [t for t in all_recs if t["source"] != "discovered"]
+        session.discovered_theories  = [t for t in all_recs if t["source"] == "discovered"]
         session.state = ForgeState.ENSEMBLE_REVIEW
 
         additions = session.research_context.library_additions
@@ -1014,48 +1021,75 @@ Do NOT mention tool parameters or code. Write for a strategy consultant, not a d
         present the ensemble. The frontend renders the detailed card view.
         """
         recs = session.recommended_theories
-        if not recs:
+        discovered = session.discovered_theories
+        if not recs and not discovered:
             return await self._finalize_ensemble(session)
 
-        # Enrich each theory with an application_note (single haiku call)
+        # Enrich all theories with application notes (single haiku call)
         await self._add_application_notes(session)
-        recs = session.recommended_theories  # re-read after enrichment
+        recs = session.recommended_theories
+        discovered = session.discovered_theories
 
-        lines = ["**Recommended theory ensemble** (ranked by domain relevance):\n"]
+        lines = []
+
+        # Tier 1 — library
+        lines.append("**Tier 1 — Library ensemble** (domain-matched from built-in library):\n")
         for i, r in enumerate(recs):
-            src = " *(new — added to library)*" if r.get("source") == "discovered" else ""
             note = r.get("application_note") or r.get("rationale", "")
             lines.append(
-                f"{i+1}. **{r['display_name']}**{src} — score {r['score']:.2f}  \n"
+                f"{i+1}. **{r['display_name']}** — score {r['score']:.2f}  \n"
                 f"   {note}"
             )
+
+        # Tier 2 — discovered (only shown if non-empty)
+        if discovered:
+            lines.append(
+                f"\n**Tier 2 — Discovered ensemble** "
+                f"({len(discovered)} theor{'y' if len(discovered) == 1 else 'ies'} built from research):\n"
+            )
+            for i, r in enumerate(discovered):
+                note = r.get("application_note") or r.get("rationale", "")
+                lines.append(
+                    f"{i+1}. **{r['display_name']}** *(new)*  \n"
+                    f"   {note}"
+                )
 
         additions = session.research_context.library_additions
         if additions:
             lines.append(
                 f"\n*{len(additions)} new theor"
-                f"{'y' if len(additions) == 1 else 'ies'} built from research and added "
-                f"to the library: {', '.join(additions)}.*"
+                f"{'y' if len(additions) == 1 else 'ies'} added to library: "
+                f"{', '.join(additions)}.*"
             )
 
-        lines.append(
-            "\n\nReview the theory cards in the panel. You can:\n"
-            "- **Accept** the recommended ensemble as-is\n"
-            "- **Customize** — add, remove, or reorder theories from the library\n"
-            "- **Run both** for side-by-side comparison\n\n"
-            "When ready, hit **Go** to launch."
-        )
+        if discovered:
+            lines.append(
+                "\n\nReview the ensembles in the panel. You can:\n"
+                "- **Accept library** — use the domain-matched library ensemble\n"
+                "- **Use discovered** — use the research-specific ensemble\n"
+                "- **Merge both** — combine unique theories from each tier\n"
+                "- **Customize** — build your own from the library\n\n"
+                "When ready, hit **Go** to launch."
+            )
+        else:
+            lines.append(
+                "\n\nReview the theory cards in the panel. You can:\n"
+                "- **Accept** the recommended ensemble as-is\n"
+                "- **Customize** — add, remove, or reorder theories from the library\n\n"
+                "When ready, hit **Go** to launch."
+            )
+
         reply = "\n".join(lines)
         session.add_message(MessageRole.ASSISTANT, reply)
         return reply
 
     async def _add_application_notes(self, session: ForgeSession) -> None:
         """
-        Add application_note to each recommended theory via a single haiku call.
+        Add application_note to each theory (library + discovered) via a single haiku call.
         Explains how each theory specifically applies to this SimSpec.
         """
-        recs = session.recommended_theories
-        if not recs:
+        all_theories = session.recommended_theories + session.discovered_theories
+        if not all_theories:
             return
 
         spec = session.simspec
@@ -1064,7 +1098,7 @@ Do NOT mention tool parameters or code. Write for a strategy consultant, not a d
 
         theory_list = "\n".join(
             f"{i+1}. {r['theory_id']}: {r.get('rationale', '')}"
-            for i, r in enumerate(recs)
+            for i, r in enumerate(all_theories)
         )
 
         prompt = f"""Scenario: {spec.name if spec else 'Unknown'}
@@ -1085,7 +1119,7 @@ One note per theory in the same order. Return ONLY valid JSON."""
         try:
             resp = self._client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=600,
+                max_tokens=900,
                 messages=[{"role": "user", "content": prompt}],
             )
             raw = resp.content[0].text.strip()
@@ -1095,11 +1129,163 @@ One note per theory in the same order. Return ONLY valid JSON."""
                     raw = raw[4:]
             notes = json.loads(raw).get("notes", [])
             for i, note in enumerate(notes):
-                if i < len(recs):
-                    recs[i]["application_note"] = note
+                if i < len(all_theories):
+                    all_theories[i]["application_note"] = note
             logger.info("_add_application_notes: enriched %d theories", len(notes))
         except Exception as exc:
             logger.warning("_add_application_notes failed: %s", exc)
+
+    # ── Gap research loop ──────────────────────────────────────────────────
+
+    async def run_gap_research(self, session: ForgeSession) -> AsyncIterator[str]:
+        """
+        Targeted research pass to close data gaps identified in the assessment.
+
+        Yields status text chunks as it runs. On completion, reruns theory mapping
+        and sets session.gap_research_complete = True.
+        """
+        yield "Launching targeted gap research...\n"
+        session.gap_research_running = True
+
+        gaps = session.data_gaps
+        if not gaps:
+            session.gap_research_running = False
+            yield "No data gaps to research.\n"
+            return
+
+        # Batch all gaps into research queries via a single haiku call
+        gap_list_text = "\n".join(f"{i+1}. {g}" for i, g in enumerate(gaps))
+        query_prompt = (
+            f"Convert each data gap into a 3-5 word academic search query.\n\n"
+            f"Data gaps:\n{gap_list_text}\n\n"
+            f"Return ONLY valid JSON: {{\"queries\": [\"query1\", \"query2\", ...]}}\n"
+            f"One query per gap, in the same order."
+        )
+        try:
+            resp = self._client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=256,
+                messages=[{"role": "user", "content": query_prompt}],
+            )
+            raw = resp.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            queries = json.loads(raw).get("queries", [])
+            if not isinstance(queries, list) or not queries:
+                queries = gaps[:3]  # fallback: use gap text directly
+        except Exception as exc:
+            logger.warning("run_gap_research: query distillation failed: %s", exc)
+            queries = gaps[:3]
+
+        yield f"Researching {len(gaps)} data gaps in parallel...\n"
+
+        ctx = session.research_context
+        new_results = []
+
+        async with httpx.AsyncClient(timeout=25.0) as http:
+            oa   = OpenAlexAdapter(http)
+            fred = FredAdapter(http)
+            news = NewsAdapter(http)
+
+            fetch_tasks = []
+            for q in queries:
+                fetch_tasks.append(oa.fetch(q, max_results=3))
+                fetch_tasks.append(fred.fetch(q, max_results=2))
+                fetch_tasks.append(news.fetch(q, max_results=2, category="economics"))
+
+            raw_results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+
+        for result in raw_results:
+            if isinstance(result, Exception):
+                continue
+            if isinstance(result, list):
+                ok = [r for r in result if r.ok]
+                new_results.extend(ok)
+
+        ctx.gap_results.extend(new_results)
+        yield f"Retrieved {len(new_results)} new research results.\n"
+
+        if new_results:
+            # Ask haiku which gaps are now closed and whether any params should update
+            snippets = "\n\n".join(
+                r.to_context_snippet() for r in new_results[:12]
+            )[:4000]
+            gap_list_json = json.dumps(gaps)
+            close_prompt = f"""You are a simulation analyst reviewing targeted research results.
+
+Data gaps to close:
+{gap_list_text}
+
+New research findings:
+{snippets}
+
+Based on the research, determine which gaps are now sufficiently grounded.
+Also extract any parameter updates (normalized 0-1 values).
+
+Return ONLY valid JSON:
+{{
+  "closed": ["exact gap text from the list that is now grounded", ...],
+  "updates": {{"param_key": 0.75, ...}}
+}}
+
+Only include a gap in "closed" if the research directly addresses it.
+Return empty lists/objects if nothing qualifies."""
+
+            try:
+                resp2 = self._client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=512,
+                    messages=[{"role": "user", "content": close_prompt}],
+                )
+                raw2 = resp2.content[0].text.strip()
+                if raw2.startswith("```"):
+                    raw2 = raw2.split("```")[1]
+                    if raw2.startswith("json"):
+                        raw2 = raw2[4:]
+                close_data = json.loads(raw2)
+                closed_gaps = close_data.get("closed", [])
+                param_updates = close_data.get("updates", {}) or {}
+
+                # Update parameter estimates
+                for k, v in param_updates.items():
+                    try:
+                        ctx.parameter_estimates[k] = float(max(0.0, min(1.0, float(v))))
+                    except (ValueError, TypeError):
+                        pass
+
+                # Update simspec initial_environment if keys exist
+                if session.simspec and param_updates:
+                    env = session.simspec.initial_environment or {}
+                    for k, v in param_updates.items():
+                        if k in env:
+                            try:
+                                env[k] = float(max(0.0, min(1.0, float(v))))
+                            except (ValueError, TypeError):
+                                pass
+
+            except Exception as exc:
+                logger.warning("run_gap_research: gap close analysis failed: %s", exc)
+                closed_gaps = []
+
+            session.closed_gaps = [g for g in closed_gaps if g in gaps]
+        else:
+            session.closed_gaps = []
+
+        session.remaining_gaps = [g for g in gaps if g not in session.closed_gaps]
+
+        yield (
+            f"Closed {len(session.closed_gaps)}/{len(gaps)} gaps. "
+            f"Updating ensemble...\n"
+        )
+
+        # Rerun theory mapping to incorporate new research
+        theory_result = await self._run_theory_mapping(session)
+
+        session.gap_research_running = False
+        session.gap_research_complete = True
+        yield theory_result
 
     async def _finalize_ensemble(self, session: ForgeSession) -> str:
         """

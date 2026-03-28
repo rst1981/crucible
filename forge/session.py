@@ -99,11 +99,14 @@ class ResearchContext:
     library_additions:   list[str]            = field(default_factory=list)
     # Theories found in papers that failed smoke test → in pending queue
     library_gaps:        list[str]            = field(default_factory=list)
+    # Targeted gap research results
+    gap_results:         list[ResearchResult] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "complete":            self.research_complete,
             "result_count":        len(self.results),
+            "gap_result_count":    len(self.gap_results),
             "theory_candidates":   self.theory_candidates,
             "parameter_estimates": self.parameter_estimates,
             "env_keys_calibrated": list(self.env_keys_calibrated),
@@ -131,10 +134,18 @@ class ForgeSession:
     domain:               str               = ""
     # Ensemble review: recommended from TheoryMapper, custom from consultant
     # recommended_theories: list[TheoryRecommendation] — stored as dicts for JSON safety
+    # Tier 1 — library theories scored by TheoryMapper
     recommended_theories: list[dict]        = field(default_factory=list)
+    # Tier 2 — theories built from research in this session (source == "discovered")
+    discovered_theories:  list[dict]        = field(default_factory=list)
     custom_theories:      list[dict] | None = None   # None = not yet customized
     deep_dive_complete:   bool              = False  # True after outcome_focus deep-dive has run
     assessment_path:      str | None       = None   # path to generated assessment .md
+    data_gaps:            list[str]        = field(default_factory=list)  # extracted from assessment prose
+    gap_research_running: bool             = False
+    gap_research_complete: bool            = False
+    closed_gaps:          list[str]        = field(default_factory=list)
+    remaining_gaps:       list[str]        = field(default_factory=list)
 
     def open_gaps(self) -> list[SpecGap]:
         """Return unfilled gaps ordered by priority descending."""
@@ -170,6 +181,7 @@ class ForgeSession:
             "simspec":               self.simspec.model_dump() if self.simspec else None,
             "gaps":                  [g.to_dict() for g in self.gaps],
             "recommended_theories":  self.recommended_theories,
+            "discovered_theories":   self.discovered_theories,
             "custom_theories":       self.custom_theories,
             "messages": [
                 m.to_dict() for m in self.conversation_history
@@ -177,4 +189,9 @@ class ForgeSession:
             ],
             "research":              self.research_context.to_dict(),
             "assessment_path":       self.assessment_path,
+            "data_gaps":             self.data_gaps,
+            "gap_research_running":  self.gap_research_running,
+            "gap_research_complete": self.gap_research_complete,
+            "closed_gaps":           self.closed_gaps,
+            "remaining_gaps":        self.remaining_gaps,
         }

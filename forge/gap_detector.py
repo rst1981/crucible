@@ -68,8 +68,11 @@ def detect_gaps(simspec: SimSpec) -> list[SpecGap]:
     if simspec.timeframe.total_ticks == 0:
         gaps.append(SpecGap(
             field_path="timeframe",
-            description="Simulation timeframe not set — how long should the scenario run?",
-            priority=0.80,
+            description=(
+                "What timeframe should this simulation cover — "
+                "how many months or years, and from what start date?"
+            ),
+            priority=0.70,
         ))
 
     return gaps

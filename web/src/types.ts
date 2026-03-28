@@ -88,8 +88,14 @@ export interface ForgeSession {
     library_gaps: string[]
   }
   recommended_theories: TheoryRecommendation[]
+  discovered_theories: TheoryRecommendation[]
   custom_theories: TheoryRecommendation[] | null
   assessment_path: string | null
+  data_gaps: string[]
+  gap_research_running: boolean
+  gap_research_complete: boolean
+  closed_gaps: string[]
+  remaining_gaps: string[]
 }
 
 export interface SimulationRun {

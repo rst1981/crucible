@@ -5,7 +5,7 @@
 
 ## Executive Summary
 
-This simulation assesses the macroeconomic cascade from an Iran conflict-induced oil supply shock over 24 months, with focus on US inflation, employment, and recession probability. The scenario centers on Strait of Hormuz closure (75% probability modeled), which handles 20.9 mb/d (~20% global supply), against limited mitigation capacity (SPR draws 1 mb/d max; Saudi spare 2 mb/d; alternative pipelines 3.5–5.5 mb/d). Current conditions show WTI at $93.61/bbl (+44% from $65/bbl pre-conflict), US CPI at 3.8% YoY with energy component at +11.2%, and unemployment rising to 4.1% from 3.7% cyclical low. The simulation will quantify recession probability under three escalation paths (information asymmetry persistence, arms-race acceleration, negotiation ripeness) and estimate Fed/Treasury policy latitude via constrained monetary effectiveness (0.45) and fiscal multipliers (0.55). Primary analytical challenge: distinguishing supply-side structural shocks (3-year recovery, -2.9pp GDP from 20% disruption per Dallas Fed) from demand-side spillovers, with South Korea (84.64% trade/GDP), Japan (46.41%), and India (85% import-dependent) as contagion nodes under SIR economic transmission.
+This simulation assesses downstream macroeconomic impacts of escalating Iran conflict on US inflation, employment, and recession probability over 24 months, with implications for Federal Reserve and Treasury policy. The core driver is a geopolitical supply shock centered on the Strait of Hormuz (20.9 mb/d global throughput, ~20% petroleum) where closure probability stands at 0.75, combined with observed WTI price rise to $93.61/bbl (+43% from $65/bbl baseline) and Brent to $106.81/bbl. Oil-to-CPI transmission elasticity is empirically grounded at 0.72 via DSGE models, implying a 28% oil price shock translates to +2.0pp core CPI pressure within 12 months. US CPI has already accelerated to 3.8% YoY (Feb 2026) with energy component +11.2%, while unemployment is rising from 3.7% cyclical low to 4.1% with 6 consecutive weeks of rising jobless claims—signaling labor market softening. The simulation will quantify recession probability under three escalation pathways (limited strike, extended blockade, full-scale conflict), determine which theories (Fearon bargaining, Keynesian multiplier, Minsky instability, SIR contagion) best predict Federal Reserve policy effectiveness (estimated at 0.45 given supply-side constraint), and estimate two-year cumulative GDP loss under binding monetary-policy constraints and fiscal multiplier compression (0.55).
 
 ---
 
@@ -13,27 +13,27 @@ This simulation assesses the macroeconomic cascade from an Iran conflict-induced
 
 | Actor | Category | Metric 1 | Value 1 | Metric 2 | Value 2 | Source |
 |-------|----------|----------|---------|----------|---------|--------|
-| United States | Macro | GDP (2024) | $28.75T | Military expenditure (% GDP) | 3.42% | World Bank, 2024 |
-| United States | Current Economic | Fed funds rate | 4.33% | Q4 2025 GDP growth (annualized, revised) | +0.7% (shutdown effect: -1.0pp) | World Bank; Federal Reserve |
-| Iran | Macro | GDP (2024) | $475B | Oil rents (% GDP) | 18.27% | World Bank, 2024 |
-| Iran | Structural | Fuel exports (% merchandise) | 56.36% | Political Stability WGI | -1.694 (bottom 5% global) | World Bank governance indicators |
-| OPEC & Gulf States | Supply Capacity | Saudi Arabian spare capacity | ~2 mb/d | Strait of Hormuz daily throughput | 20.9 mb/d (20% global supply) | Energy Information Administration; Economist Intelligence Unit |
-| Global Oil Markets | Price & Risk | WTI spot price | $93.61/bbl | Geopolitical risk premium | $15–20/bbl | FRED DCOILWTICO; Economist |
-| Oil-Dependent Importers (Contagion) | Trade Exposure | South Korea trade/GDP ratio | 84.64% | Japan trade/GDP ratio | 46.41% | World Bank trade indicators |
-| Oil-Dependent Importers (Contagion) | Energy Vulnerability | India crude oil import dependency | 85% of consumption | India trade/GDP ratio | 44.65% | World Bank; Oil & Gas Journal |
-| Federal Reserve | Policy Constraints | Monetary policy effectiveness multiplier | 0.45 (constrained) | Terminal rate (current regime) | 4.33% | Parameter estimates; Federal Reserve FOMC |
-| US Treasury | Policy Constraints | Fiscal multiplier (constrained regime) | 0.55 | Strategic reserves draw capacity | ~1 mb/d for 109–124 days | Parameter estimates; EIA reserve data |
+| United States | Macroeconomic | GDP (nominal, 2024) | $28.75 trillion | Military Expenditure (% GDP) | 3.42% | World Bank, National Accounts |
+| United States | Monetary Policy | Fed Funds Rate | 4.33% | Policy Effectiveness (estimated) | 0.45 | Federal Reserve; DSGE calibration |
+| Iran | Economic Exposure | GDP (2024) | $475 billion | Oil Rents (% GDP) | 18.27% | World Bank |
+| Iran | Geopolitical Risk | Political Stability Index (WGI) | -1.694 (bottom 5%) | Military Expenditure (% GDP) | 2.01% | World Bank Governance Indicators |
+| OPEC & Gulf States | Supply Capacity | Strait of Hormuz Throughput | 20.9 mb/d (~20% global) | Saudi Spare Capacity | ~2 mb/d | Economist (energy); EIA |
+| OPEC & Gulf States | Market Constraint | Alternative Pipeline Capacity | 3.5–5.5 mb/d | Supply Deficit (unrecoverable) | 15+ mb/d | Economist (energy reporting) |
+| Global Oil Markets | Price & Risk | WTI Price (current) | $93.61/bbl | Geopolitical Risk Premium | $15–20/bbl | FRED DCOILWTICO; Economist |
+| Oil-Dependent Importers | Trade Exposure | South Korea Trade/GDP | 84.64% | India Oil Import Dependency | 85% of consumption | World Bank; primary SIR contagion nodes |
+| Federal Reserve | Policy Constraint | Monetary Policy Effectiveness | 0.45 | Inflation Transmission Elasticity (oil→CPI) | 0.72 | DSGE models; FRED CPI data |
+| US Treasury | Fiscal Policy | Fiscal Multiplier (constrained) | 0.55 | SPR Draw Capacity | ~1 mb/d for 109 days max | Keynesian shock analysis; EIA |
 
 ---
 
 ## Macro & Sector Context
 
-- WTI crude $93.61/bbl (March 2026), +44% from $65/bbl pre-conflict baseline; Brent $106.81/bbl with $15–20/bbl geopolitical risk premium
-- US CPI +3.8% YoY (Feb 2026, +0.7pp from 3.1% pre-conflict); Energy sub-index +11.2% YoY; Oil→CPI elasticity 0.72 (DSGE)
-- US unemployment 4.1% (Feb 2026, up 0.4pp from 3.7% cyclical low); initial jobless claims trending upward 6 consecutive weeks
-- Strait of Hormuz throughput 20.9 mb/d at risk; alternative capacity 3.5–5.5 mb/d only; ~200 tankers stranded; Lloyd's war-risk premiums at 2003 Iraq levels
-- US Strategic Petroleum Reserve coverage 109–124 days at current draw rates; SPR mobilization capped ~1 mb/d for ~109 days
-- Global food price index +8% since conflict onset (FAO); Baltic Dry Index +40% YoY; LNG/LPG freight +70% via Cape of Good Hope rerouting
+- WTI crude $93.61/bbl (March 2026), +43% from $65/bbl pre-conflict baseline; Brent $106.81/bbl with $15–20/bbl geopolitical risk premium
+- US CPI +3.8% YoY (Feb 2026, up from 3.1% pre-conflict); energy component +11.2% YoY; inflation_transmission_elasticity 0.72 implies sustained upside pressure
+- US unemployment 4.1% (Feb 2026) rising from 3.7% cyclical low; initial jobless claims up 6 consecutive weeks; recessionary threshold breach at 0.65 probability
+- Strait of Hormuz closure probability 0.75 with 20.9 mb/d throughput; alternative pipeline capacity 3.5–5.5 mb/d only; supply deficit 15+ mb/d unrecoverable via SPR or OPEC spare capacity
+- US Fed funds rate 4.33%; monetary policy effectiveness constrained at 0.45 due to supply-side shock; fiscal multiplier 0.55 reflects crowding-out and demand contraction
+- South Korea (trade/GDP 84.64%), Japan (46.41%), India (imports 85% of oil) identified as primary SIR economic contagion nodes; food price index +8% since conflict onset
 
 ---
 
@@ -150,27 +150,36 @@ This simulation assesses the macroeconomic cascade from an Iran conflict-induced
 
 | Signal | Direction | Confidence | Module |
 |--------|-----------|------------|--------|
-| Strait of Hormuz closure probability hits 80%+ and tanker insurance premiums spike above 2008 Lehman levels | ↑ | High | richardson_arms_race |
-| WTI exceeds $120/bbl; CPI energy component surpasses 15% YoY; Fed forced to signal terminal rate hold or hike to >4.75% | ↑ | High | keynesian_multiplier |
-| Unemployment accelerates above 4.5% within 12 months; initial jobless claims breach 300k 4-week average | ↑ | Medium | minsky_instability |
-| South Korea exports contract >5% QoQ; Japan CPI energy component breaches 8%; India current account deficit widens to 3%+ of GDP | ↓ | Medium | sir_contagion |
-| US-Iran negotiations resume with third-party mediation (Oman, Qatar); information gap (sigma) narrows; implied conflict probability recedes below 40% | → | Low | wittman_zartman |
+| Initial jobless claims rising 6 consecutive weeks despite unemployment at 4.1%; labor market weakening confirms demand contraction onset | ↑ | High | keynesian_multiplier |
+| Energy CPI component +11.2% YoY while headline CPI +3.8%; elasticity 0.72 implies sustained second-order pass-through to core CPI over 12 months unless supply recovery occurs | ↑ | High | inflation_transmission_elasticity |
+| Strait of Hormuz closure probability 0.75 with unrecoverable 15+ mb/d deficit; SPR and OPEC spare capacity insufficient to offset; supply shock duration 18–36 months per Kilian (2009) VAR | ↓ | High | sir_contagion |
+| Federal Reserve constrained at 0.45 policy effectiveness under supply-shock regime; rate hikes ineffective against energy-driven stagflation, signaling policy pivot risk toward forward guidance or temporary price controls | → | Medium | monetary_policy_effectiveness |
+| Lloyd's war-risk premiums at 2003 Iraq levels, 200 tankers stranded, marine insurance exit from Strait; financial market volatility persistence 0.7 and commodity contagion 0.68 imply Minsky instability spiral if credit events cascade | ↑ | Medium | minsky_instability |
 
 ---
 
 ## Data Gaps & Monte Carlo Guidance
 
-- Iran private willingness-to-pay and war-cost probability distribution: Fearon bargaining sigma calibrated to 0.15–0.25 for nuclear opacity, but no direct estimation of current Iranian decision-maker risk preferences or credible commitment mechanisms; Monte Carlo should sample sigma ∈ [0.10, 0.35] with sensitivity analysis on bargaining breakdown probability.
-- US consumer demand elasticity to sustained energy price shocks: inflation_transmission_elasticity (0.72) estimated from DSGE models, but heterogeneity across income quintiles and sector exposure not specified; requires household-level scanner data or CEX microeconomic decomposition to reduce 95% CI width.
-- Global supply-chain network resilience under 15+ mb/d Hormuz shortfall: supply_chain_disruption_severity (0.78) is aggregate parameter; lacks granular input-output matrix for semiconductor, automotive, pharmaceuticals sectors; recommend BEA IO tables cross-walk with shipping lane data.
-- Persistence of financial market volatility beyond 3-month window: financial_market_volatility_persistence (0.7) derived from contemporaneous equity volatility, but credit market contagion (spreads, CDS basis) and potential illiquidity cascades in derivatives markets under extreme scenarios not explicitly modeled; requires options market data and repo framework extension.
-- Monetary policy transmission under zero lower bound variant: Fed funds at 4.33% provides room, but effectiveness (0.45) does not account for expectations anchoring post-inflation episode or fiscal dominance dynamics; Taylor rule residuals and survey expectations data (Livingston, SPF) needed to bound policy multiplier sensitivity.
+- Private information gap sigma for Iran nuclear programme not independently verified; Fearon (1995) suggests 0.15–0.25 range, but current conflict-specific asymmetry unavailable. Recommend intelligence community calibration or sensitivity analysis across sigma ∈ [0.10, 0.35].
+- Monetary policy effectiveness (0.45) estimated from supply-side constraint but lacks 24-month regime-specific validation. No forward guidance credibility metric or expectations-anchoring data post-March 2026 available. Recommend Fed communications index augmentation.
+- Fiscal multiplier (0.55) derived from Keynesian framework under demand contraction but lacks crowding-out elasticity w.r.t. current 4.33% rates and debt-to-GDP ratio. World Bank fiscal data incomplete for scenario-specific calibration.
+- Supply chain disruption severity (0.78) proxy variable; no granular sector-level data (auto, semiconductors, chemicals) for contagion pathway differentiation. SIR model requires firm-level import dependency and inventory turnover data unavailable in open sources.
+- Minsky financial instability parameter (leverage ratios, margin call cascades, credit spread widening) entirely absent. Only equity market volatility persistence (0.7) inferred; repo market stress, duration risk, and banks' energy-sector exposure not quantified. Recommend Fed Flow of Funds and banking supervisory data integration.
 
 **Monte Carlo guidance:** 200–400 runs; perturb escalation_prob ±25%, resolve_threshold ±20%. Perturb: oil_price_shock_magnitude, strait_of_hormuz_closure_probability, inflation_transmission_elasticity, unemployment_recessionary_threshold. Horizon: 24 months. Run 1 deterministic baseline first, then launch MC.
 
 
 ---
 
+## Discovered Theories
+
+These theories were extracted from academic research during this session and are scenario-specific — distinct from the generic library ensemble.
+
+### Pending Review
+
+These theories were identified in research but did not pass the automated smoke test. Review in `data/theories/pending/` before use:
+
+- **Iran Growth Accounting** (`iran_growth_accounting`) — `data/theories/pending/`
 
 
 ## Sources

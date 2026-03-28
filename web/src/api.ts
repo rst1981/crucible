@@ -25,6 +25,7 @@ export const forgeApi = {
   setCustomEnsemble: (id: string, theories: unknown[]) =>
     req<any>('PUT', `/forge/intake/${id}/theories/custom`, { theories }),
   generateAssessment: (id: string) => req<any>('POST', `/forge/intake/${id}/assessment`),
+  researchGaps: (session_id: string) => `/forge/intake/${session_id}/research-gaps`,
 }
 
 // Simulations
@@ -67,6 +68,45 @@ export const ensembleApi = {
   delete: (id: string) => req<void>('DELETE', `/api/ensembles/${id}`),
   fork: (id: string, name: string) =>
     req<any>('POST', `/api/ensembles/${id}/fork`, { name }),
+}
+
+// SSE helper for streaming gap research
+export function streamGapResearch(
+  session_id: string,
+  onChunk: (text: string) => void,
+  onDone: (session: unknown) => void,
+  onError: (detail: string) => void,
+): () => void {
+  const ctrl = new AbortController()
+  fetch(`/forge/intake/${session_id}/research-gaps`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: ctrl.signal,
+  }).then(async (res) => {
+    if (!res.ok) { onError(`HTTP ${res.status}`); return }
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const payload = JSON.parse(line.slice(6))
+          if (payload.type === 'chunk') onChunk(payload.text)
+          else if (payload.type === 'done') onDone(payload.session)
+          else if (payload.type === 'error') onError(payload.detail)
+        } catch { /* skip malformed */ }
+      }
+    }
+  }).catch((err) => {
+    if (err.name !== 'AbortError') onError(String(err))
+  })
+  return () => ctrl.abort()
 }
 
 // SSE helper for streaming forge messages

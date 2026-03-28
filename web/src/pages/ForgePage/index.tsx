@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { forgeApi, simApi, streamForgeMessage, theoryApi } from '../../api'
+import { forgeApi, simApi, streamForgeMessage, streamGapResearch, theoryApi } from '../../api'
 import { useForgeStore } from '../../stores/forgeStore'
 
-type RunMode = 'recommended' | 'custom' | 'both'
+type RunMode = 'recommended' | 'discovered' | 'merged' | 'custom' | 'both'
 type Theory = { theory_id: string; display_name: string; score: number; rationale: string; application_note?: string; source?: string; domains?: string[] }
 
 export function ForgePage() {
@@ -22,6 +22,8 @@ export function ForgePage() {
   const [buildingCustom, setBuildingCustom] = useState(false)
   const [libraryTheories, setLibraryTheories] = useState<Theory[]>([])
   const [libraryOpen, setLibraryOpen] = useState(false)
+  const [gapResearching, setGapResearching] = useState(false)
+  const [gapResearchLog, setGapResearchLog] = useState<string>('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const cancelStreamRef = useRef<(() => void) | null>(null)
 
@@ -143,8 +145,11 @@ export function ForgePage() {
   const handleLaunch = async () => {
     if (!session) return
     setLaunching(true)
+    // discovered/merged modes both pre-populate custom_theories and launch as 'custom'
+    const apiMode: 'recommended' | 'custom' | 'both' =
+      (runMode === 'discovered' || runMode === 'merged') ? 'custom' : runMode as 'recommended' | 'custom' | 'both'
     try {
-      const result = await simApi.launch(session.session_id, runMode)
+      const result = await simApi.launch(session.session_id, apiMode)
       for (const { sim_id, ensemble_type } of result.launched) {
         addRun({
           sim_id,
@@ -206,17 +211,126 @@ export function ForgePage() {
   // ── Ensemble Review + Go Page ──────────────────────────────────────────────
   if (inEnsembleReview) {
     const recs: Theory[] = session.recommended_theories ?? []
+    const discovered: Theory[] = session.discovered_theories ?? []
+    const hasTwoTiers = discovered.length > 0
+
+    // Merged = recs + discovered, deduped by theory_id
+    const merged: Theory[] = [
+      ...recs,
+      ...discovered.filter(d => !recs.find(r => r.theory_id === d.theory_id))
+    ]
+
+    const handleQuickSelect = async (theories: Theory[], mode: RunMode) => {
+      if (!session) return
+      await forgeApi.setCustomEnsemble(session.session_id, theories.map((t, i) => ({
+        theory_id: t.theory_id, priority: i, parameters: {}
+      })))
+      const updated = await forgeApi.getSession(session.session_id)
+      setSession(updated)
+      setRunMode(mode === 'recommended' ? 'recommended' : 'custom')
+    }
+
+    const handleGapResearch = () => {
+      if (!session || gapResearching || session.gap_research_complete) return
+      setGapResearching(true)
+      setGapResearchLog('')
+      streamGapResearch(
+        session.session_id,
+        (chunk) => setGapResearchLog(prev => prev + chunk),
+        async (updatedSession) => {
+          setGapResearching(false)
+          const refreshed = await forgeApi.getSession(session.session_id)
+          setSession(refreshed)
+        },
+        (err) => {
+          setGapResearching(false)
+          setGapResearchLog(prev => prev + `\nError: ${err}`)
+        },
+      )
+    }
+
+    const GapResearchPanel = () => {
+      if (!session?.data_gaps?.length) return null
+      const [open, setOpen] = useState(true)
+      const gaps = session.data_gaps ?? []
+      const closed = session.closed_gaps ?? []
+      const remaining = session.remaining_gaps ?? []
+      const resolvedCount = closed.length
+      const totalCount = gaps.length
+
+      return (
+        <div className="border border-border rounded-lg bg-surface">
+          <button
+            className="w-full flex items-center justify-between px-4 py-3 text-left"
+            onClick={() => setOpen(o => !o)}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-text-primary">Data Gaps</span>
+              <span className="badge-gray">{totalCount}</span>
+              {session.gap_research_complete && (
+                <span className={resolvedCount === totalCount ? 'badge-green' : 'badge-yellow'}>
+                  {resolvedCount}/{totalCount} resolved
+                </span>
+              )}
+            </div>
+            <span className="text-text-secondary text-xs">{open ? '▲' : '▼'}</span>
+          </button>
+
+          {open && (
+            <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
+              <ul className="space-y-1">
+                {gaps.map((gap, i) => {
+                  const isClosed = closed.includes(gap)
+                  const isRemaining = remaining.includes(gap)
+                  return (
+                    <li key={i} className="text-xs text-text-secondary flex items-start gap-1.5">
+                      <span className={isClosed ? 'text-green-400' : isRemaining ? 'text-text-secondary/50' : ''}>
+                        {isClosed ? '✓' : isRemaining ? '○' : '·'}
+                      </span>
+                      <span className={isClosed ? 'line-through text-text-secondary/50' : ''}>{gap}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              <button
+                className="btn-primary text-xs py-1 px-3"
+                onClick={handleGapResearch}
+                disabled={gapResearching || session.gap_research_complete}
+              >
+                {gapResearching ? 'Researching…' : session.gap_research_complete ? 'Research complete' : 'Research gaps'}
+              </button>
+
+              {gapResearchLog && (
+                <pre className="text-xs text-text-secondary/70 bg-bg rounded p-2 overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
+                  {gapResearchLog}
+                </pre>
+              )}
+
+              {session.gap_research_complete && (
+                <p className={`text-xs font-medium ${resolvedCount === totalCount ? 'text-green-400' : 'text-yellow-400'}`}>
+                  {resolvedCount}/{totalCount} gaps resolved
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )
+    }
+
     return (
       <div className="flex h-full overflow-hidden">
         {/* Left: theory cards */}
         <div className="flex-1 flex flex-col min-w-0 overflow-y-auto p-6 space-y-6">
+
+          <GapResearchPanel />
 
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-text-primary">Theory Ensemble</h2>
               <p className="text-xs text-text-secondary mt-0.5">
-                {recs.length} modules recommended · {session.research_context?.library_additions?.length ?? 0} newly discovered
+                {recs.length} library · {discovered.length} discovered from research
               </p>
             </div>
             <button className="text-xs text-text-secondary hover:text-danger" onClick={reset}>
@@ -224,15 +338,87 @@ export function ForgePage() {
             </button>
           </div>
 
-          {/* Recommended theory cards */}
-          <div>
-            <p className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-3">Recommended</p>
-            <div className="space-y-3">
-              {recs.map((t, i) => (
-                <TheoryCard key={t.theory_id} theory={t} rank={i + 1} />
-              ))}
+          {/* Two-tier view */}
+          {hasTwoTiers ? (
+            <div className="grid grid-cols-2 gap-4">
+              {/* Tier 1 */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <p className="text-xs font-medium text-text-secondary uppercase tracking-wider">Tier 1 — Library</p>
+                  <span className="badge-gray">{recs.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {recs.map((t, i) => (
+                    <TheoryCard key={t.theory_id} theory={t} rank={i + 1} compact />
+                  ))}
+                </div>
+              </div>
+              {/* Tier 2 */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <p className="text-xs font-medium text-text-secondary uppercase tracking-wider">Tier 2 — Discovered</p>
+                  <span className="badge-green">{discovered.length} new</span>
+                </div>
+                <div className="space-y-2">
+                  {discovered.map((t, i) => (
+                    <TheoryCard key={t.theory_id} theory={t} rank={i + 1} compact />
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Single-tier fallback */
+            <div>
+              <p className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-3">Recommended</p>
+              <div className="space-y-3">
+                {recs.map((t, i) => (
+                  <TheoryCard key={t.theory_id} theory={t} rank={i + 1} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Quick-select buttons (two-tier only) */}
+          {hasTwoTiers && (
+            <div className="border border-border rounded-lg p-4 space-y-3">
+              <p className="text-sm font-medium text-text-primary">Select ensemble</p>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  className={`text-xs rounded border py-2 px-3 text-left transition-colors ${
+                    runMode === 'recommended'
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-border text-text-secondary hover:border-accent/50'
+                  }`}
+                  onClick={() => { setRunMode('recommended'); }}
+                >
+                  <span className="font-medium block text-text-primary">Accept library</span>
+                  <span className="text-text-secondary/70">{recs.length} theories</span>
+                </button>
+                <button
+                  className={`text-xs rounded border py-2 px-3 text-left transition-colors ${
+                    runMode === 'discovered'
+                      ? 'border-green-500 bg-green-500/10 text-green-400'
+                      : 'border-border text-text-secondary hover:border-green-500/50'
+                  }`}
+                  onClick={() => handleQuickSelect(discovered, 'discovered')}
+                >
+                  <span className="font-medium block text-text-primary">Use discovered</span>
+                  <span className="text-text-secondary/70">{discovered.length} theories</span>
+                </button>
+                <button
+                  className={`text-xs rounded border py-2 px-3 text-left transition-colors ${
+                    runMode === 'merged'
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-border text-text-secondary hover:border-accent/50'
+                  }`}
+                  onClick={() => handleQuickSelect(merged, 'merged')}
+                >
+                  <span className="font-medium block text-text-primary">Merge both</span>
+                  <span className="text-text-secondary/70">{merged.length} theories</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Custom ensemble builder */}
           <div className="border border-border rounded-lg p-4">
@@ -242,20 +428,20 @@ export function ForgePage() {
                 <p className="text-xs text-text-secondary">
                   {hasCustom
                     ? `${session.custom_theories!.length} theories configured`
-                    : 'Start from recommended and customise'}
+                    : 'Build from scratch or start from a quick-select above'}
                 </p>
               </div>
               <button
                 className="btn-primary text-xs py-1 px-3"
                 onClick={() => setBuildingCustom(!buildingCustom)}
               >
-                {buildingCustom ? 'Close' : hasCustom ? 'Edit custom' : 'Build custom'}
+                {buildingCustom ? 'Close' : hasCustom ? 'Edit' : 'Build custom'}
               </button>
             </div>
 
             {buildingCustom && (
               <div className="space-y-3 mt-3 border-t border-border pt-3">
-                <p className="text-xs text-text-secondary">Drag to reorder · click × to remove</p>
+                <p className="text-xs text-text-secondary">Click × to remove · use library to add</p>
                 <div className="space-y-2">
                   {customTheories.map((t, i) => (
                     <div key={t.theory_id} className="flex items-center gap-2 bg-bg rounded px-3 py-2 text-xs">
@@ -343,10 +529,22 @@ export function ForgePage() {
             <div className="border-t border-border pt-3">
               <p className="text-xs font-medium text-text-secondary mb-2">Run mode</p>
               <div className="space-y-2">
-                {(['recommended', 'custom', 'both'] as RunMode[]).map(mode => {
-                  const disabled = mode === 'custom' && !hasCustom
+                {(hasTwoTiers
+                  ? (['recommended', 'custom', 'both'] as RunMode[])
+                  : (['recommended', 'custom', 'both'] as RunMode[])
+                ).map(mode => {
+                  const disabled = (mode === 'custom') && !hasCustom
+                  const activeTheories = {
+                    recommended: recs,
+                    discovered: discovered,
+                    merged: merged,
+                    custom: session.custom_theories ?? [],
+                    both: recs,
+                  }[mode] ?? []
                   const label = {
-                    recommended: `Recommended (${recs.length} theories)`,
+                    recommended: `Library (${recs.length} theories)`,
+                    discovered: `Discovered (${discovered.length} theories)`,
+                    merged: `Merged (${merged.length} theories)`,
                     custom: hasCustom
                       ? `Custom (${session.custom_theories?.length ?? 0} theories)`
                       : 'Custom — not yet built',
@@ -372,9 +570,15 @@ export function ForgePage() {
 
             {/* Ensemble summaries */}
             <div className="border-t border-border pt-3 space-y-3">
-              <EnsembleSummary label="Recommended" theories={recs} active={runMode !== 'custom'} />
-              {hasCustom && (
-                <EnsembleSummary label="Custom" theories={session.custom_theories ?? []} active={runMode !== 'recommended'} />
+              {runMode === 'recommended' && <EnsembleSummary label="Library" theories={recs} active />}
+              {runMode === 'discovered' && <EnsembleSummary label="Discovered" theories={discovered} active />}
+              {runMode === 'merged' && <EnsembleSummary label="Merged" theories={merged} active />}
+              {runMode === 'custom' && hasCustom && <EnsembleSummary label="Custom" theories={session.custom_theories ?? []} active />}
+              {runMode === 'both' && (
+                <>
+                  <EnsembleSummary label="Library" theories={recs} active />
+                  {hasCustom && <EnsembleSummary label="Custom" theories={session.custom_theories ?? []} active />}
+                </>
               )}
             </div>
 
@@ -541,23 +745,23 @@ export function ForgePage() {
 
 // ── Theory card component ─────────────────────────────────────────────────────
 
-function TheoryCard({ theory, rank }: { theory: Theory; rank: number }) {
+function TheoryCard({ theory, rank, compact }: { theory: Theory; rank: number; compact?: boolean }) {
   const [expanded, setExpanded] = useState(false)
   const isNew = theory.source === 'discovered'
   return (
-    <div className="border border-border rounded-lg p-4 bg-surface">
-      <div className="flex items-start gap-3">
-        <span className="text-lg font-bold text-text-secondary/40 w-6 shrink-0 leading-none mt-0.5">{rank}</span>
+    <div className={`border border-border rounded-lg bg-surface ${compact ? 'p-3' : 'p-4'}`}>
+      <div className="flex items-start gap-2">
+        <span className={`font-bold text-text-secondary/40 shrink-0 leading-none mt-0.5 ${compact ? 'text-sm w-4' : 'text-lg w-6'}`}>{rank}</span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="font-medium text-text-primary text-sm">{theory.display_name}</span>
+            <span className={`font-medium text-text-primary ${compact ? 'text-xs' : 'text-sm'}`}>{theory.display_name}</span>
             {isNew && <span className="badge-green text-xs">New</span>}
             <span className="ml-auto text-xs text-text-secondary font-mono">{theory.score.toFixed(2)}</span>
           </div>
-          <p className="text-xs text-text-secondary leading-relaxed">
+          <p className="text-xs text-text-secondary leading-relaxed line-clamp-3">
             {theory.application_note || theory.rationale}
           </p>
-          {theory.rationale && theory.application_note && (
+          {!compact && theory.rationale && theory.application_note && (
             <button
               className="text-xs text-accent/70 hover:text-accent mt-1"
               onClick={() => setExpanded(!expanded)}
@@ -565,7 +769,7 @@ function TheoryCard({ theory, rank }: { theory: Theory; rank: number }) {
               {expanded ? '− less' : '+ rationale'}
             </button>
           )}
-          {expanded && (
+          {!compact && expanded && (
             <p className="text-xs text-text-secondary/70 italic mt-1 leading-relaxed border-l border-border pl-2">
               {theory.rationale}
             </p>
