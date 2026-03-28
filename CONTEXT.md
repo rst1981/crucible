@@ -280,6 +280,45 @@ Always keep CONTEXT.md up to date with what happened in the current session. On 
 - Commit and push (or let the Stop hook handle it if no manual commit is needed)
 - Keep the memory files (`C:\Users\rchtk\.claude\projects\d--dev-crucible\memory\`) and CONTEXT.md `## Claude Working Rules` in sync
 
+**Force ask_user after update_simspec**  
+*How to prevent the scoping agent from looping on update_simspec instead of asking the user*
+
+After the first `update_simspec` call in `_agent_turn`, do NOT trust the LLM to call `ask_user` next — it will loop on `update_simspec` indefinitely.
+
+The fix: intercept programmatically and call `_force_ask_user`, which makes a separate constrained Claude call with ONLY the `ask_user` tool available (`tool_choice: {"type": "any"}`). The model cannot call `update_simspec` because it's not in the tool list.
+
+**Why:** Prompt-based instructions ("you MUST call ask_user next", SYSTEM REMINDER injections) are ignored when the model has already built up a long tool-use context. The only reliable fix is architectural — remove the unwanted tool from the available set.
+
+**How to apply:** Any time a tool-use agent loops on a specific tool instead of progressing, the fix is a constrained follow-up call with reduced tool set, not stronger prompt instructions.
+
+**Interview should be 2-3 questions max**  
+*Interview sweet spot is 2 questions; 3 is the ceiling. Outcome focus + theories are the right human-input questions. Everything else is model-derived.*
+
+The interview should ask 2 questions (sweet spot), maximum 3. Asking 1 is too few — client needs agency over both their decision focus and theoretical framing.
+
+**Rule — ask these three:**
+1. `outcome_focus` — "What decision does this simulation inform?" — always ask (human knows their decision)
+2. `timeframe` — "How long should the scenario run, and from what start date?" — always ask (user specifies horizon)
+3. `theories` — "Specific framework or let model decide?" — always ask, always offer "let model decide empirically" as default option
+
+**Hard limits — never ask:**
+- Metrics → model derives from outcome focus
+- Actors → model derives from intake
+- Initial conditions → model derives from research
+
+**Why:** User noted (2026-03-28) that asking too many questions "overspecifies the model." But 1 question was too few — theories question gives client agency over framing without being prescriptive, especially with the empirical option. "2 is best, 3 max."
+
+**How to apply:** `gap_detector.py` should flag `outcome_focus` (priority 0.99) and `theories` (priority 0.50) only. Theories gap should be suppressed if research has already surfaced a clear recommendation. All other gaps (metrics, actors, timeframe, initial_environment) should be auto-filled by the agent from research context.
+
+**Theory selection — always offer empirical option**  
+*The theories interview question must always include a "let the model decide empirically" option — no prescribed framework*
+
+"Let the model decide empirically — no prescribed theoretical framework" must always be offered as a selectable option when the scoping agent asks about theories/theoretical framework.
+
+**Why:** User explicitly asked for it during live testing (2026-03-28). When we build dashboard features, this option becomes critical — the empirical path lets the model select theories based on research rather than user prescription.
+
+**How to apply:** In `_force_ask_user` when asking about `theories` gap, the suggested options should always include an explicit "empirical / let the model decide based on research" choice. Also applies to the ensemble review UI — add an "Accept model recommendation" default button.
+
 **Use python -m uvicorn on this machine**  
 *uvicorn CLI not on PATH because user-site Scripts dir missing from PATH; always use python -m uvicorn*
 
@@ -301,7 +340,7 @@ NEVER run `npx vercel --prod` or any Vercel CLI deploy command. It creates dupli
 ### Project Context
 
 **Crucible — Agentic Simulation Platform**  
-*Generalized simulation platform for consulting firm — Week 1 (core engine) complete, 268 tests green*
+*Generalized simulation platform for consulting firm — Week 6 complete, 1039 tests green, full Forge UI live*
 
 Crucible is a proprietary agentic simulation platform enabling the firm to rapidly build, run, and deliver scenario-based models across market sectors for public and private sector clients.
 
@@ -326,10 +365,10 @@ Crucible is a proprietary agentic simulation platform enabling the firm to rapid
 ```
 Free-form text input
         ↓
-[Scoping Agent] — fires background research immediately (arXiv, SSRN, FRED, World Bank, news)
+[Scoping Agent] — fires background research immediately (arXiv, SSRN, FRED, World Bank, ~50 RSS feeds)
   - Research-grounded interview, not a form
   - Asks informed questions based on what research reveals
-  - Iterates with user, surfacing domain perspectives
+  - Outcome-focus deep-dive after consultant defines simulation goal
   - Builds SimSpec object conversationally
         ↓
 [Theory Mapper] → [Sim Factory] → [Dashboard] → [Data Feed Agent]
@@ -337,14 +376,17 @@ Free-form text input
 
 ---
 
-## Research Sources (design-time + runtime)
-- arXiv, SSRN, FRED, World Bank, news/OSINT
+## Research Sources
+- arXiv, SSRN, FRED, World Bank — structured adapters
+- ~50 curated RSS feeds: geopolitics, defense, economics, energy, corporate, think tanks
+- GDELT, Guardian, NewsAPI, ACLED, EIA, UN adapters (Week 2 expansion)
 
 ## Theory Library
 - Conflict/geopolitics: Richardson, Wittman-Zartman, Fearon
-- Markets: Porter's Five Forces, supply/demand shocks, contagion
+- Markets: Porter's Five Forces, supply/demand shocks, contagion, Cournot oligopoly
 - Org/corporate: principal-agent, institutional theory, diffusion of innovation
 - Macro/policy: Keynesian multipliers, regulatory shock models
+- Discovered theories: auto-built from arXiv/SSRN papers via TheoryBuilder (smoke-tested, auto-approved or queued for review)
 
 ---
 
@@ -352,60 +394,55 @@ Free-form text input
 ```
 crucible/
 ├── CONTEXT.md               ← living design doc, commit each session
-├── PROPOSAL.md              ← internal pitch document
 ├── core/                    # generalized sim engine
 │   ├── agents/              # BDI agent base classes
-│   ├── theories/            # curated theory library
+│   ├── theories/            # curated + discovered theory library
 │   ├── sim_runner.py
 │   └── spec.py              # SimSpec dataclass
 ├── forge/                   # scoping agent + research pipeline
-│   ├── scoping_agent.py
-│   ├── researchers/         # arXiv, SSRN, FRED, World Bank, news adapters
-│   └── theory_mapper.py
-├── api/                     # FastAPI backend
-├── web/                     # React frontend (ForgePage, DashboardPage, PortalPage)
+│   ├── scoping_agent.py     # ScopingAgent + _force_ask_user + _run_outcome_deepdive
+│   ├── gap_detector.py      # mandatory outcome_focus gap
+│   ├── spec_builder.py
+│   ├── session.py           # ForgeSession state machine
+│   ├── theory_builder.py    # auto-builds theories from papers
+│   ├── theory_mapper.py
+│   └── researchers/         # arXiv, SSRN, FRED, World Bank, news + 6 new adapters
+├── api/                     # FastAPI backend (port 8000)
+│   └── routers/             # forge, theories, ensembles, simulations
+├── web/                     # React/Vite/TS frontend (port 5173)
+│   └── src/pages/           # ForgePage, LibraryPage, EnsemblesPage, DashboardPage
 ├── scenarios/hormuz/        # reference implementation #1
-└── data/
+├── data/theories/pending/   # discovered theories awaiting review
+└── restart.ps1              # kills ports 8000/5173, relaunches both
 ```
 
 ---
 
-## Build Plan (12 weeks, 1 developer + Claude)
+## Build Plan Status (as of 2026-03-27)
 
-- **Phase 1 (Weeks 1–3):** Core engine, SimSpec, theory library, research adapters, Hormuz port
-- **Phase 2 (Weeks 4–7):** Scoping agent, Forge UI, end-to-end plain-language → running sim
+- ✅ **Week 1:** Core engine, SimSpec, theory library, BDI agents (268 tests)
+- ✅ **Week 2:** Research adapters — arXiv, SSRN, FRED, World Bank, news + 6 new adapters (GDELT, Guardian, NewsAPI, ACLED, EIA, UN), ~50 curated RSS feeds
+- ✅ **Week 3:** Hormuz scenario port, sim runner, snapshots
+- ✅ **Week 4:** Scoping Agent + Forge API
+- ✅ **Week 5:** Theory catalog API, ensemble CRUD, 77 new tests (1039 total)
+- ✅ **Week 6:** React/Vite frontend — Forge, Library, Ensembles, Dashboard pages
 - **Phase 3 (Weeks 8–12):** Client portal, continuous calibration agent, pilot engagement
+
+---
+
+## Key Bugs Fixed (recent)
+- `_force_ask_user`: after first `update_simspec`, loop hands off to a constrained Claude call with ONLY `ask_user` available — prevents the agent looping on `update_simspec` indefinitely
+- `outcome_focus` gap: mandatory gap (priority 0.99) that research cannot fill — forces agent to always ask the consultant
+- `charmap` codec: theory_builder writes generated Python with `encoding="utf-8"`
+- `_run_outcome_deepdive`: after `outcome_focus` is filled, runs targeted arXiv search + haiku summary of relevant theory frameworks; prepended to next interview turn
+- Markdown rendering in ForgePage chat (react-markdown + remark-gfm)
 
 ---
 
 ## Open Questions
 1. Name trademark check for "Crucible" — not yet done
-2. Deployment pattern — likely Railway + Vercel (same as Hormuz)
-3. Research skills (custom Claude Code skills) — user is researching gstack-style skill files for /research-theory, /research-data etc.
-4. Scenario definition standardization — resolved: SimSpec populated via scoping agent
-
----
-
-## Status
-
-**Date:** March 25, 2026. **Week 1 complete.** All core engine modules built and tested.
-
-### Week 1 delivered (268 tests, all green):
-- `core/spec.py` — SimSpec, BeliefSpec, ActorSpec, TheoryRef, all supporting types
-- `core/agents/base.py` — BDIAgent, DefaultBDIAgent, BetaBelief, GaussianBelief, tick() coordinator
-- `core/theories/base.py` + `__init__.py` — TheoryBase ABC, registry with duplicate-check
-- `core/theories/richardson_arms_race.py` — full Richardson ODE + equilibrium()
-- `core/theories/fearon_bargaining.py` — private info + commitment problem conflict mechanisms
-- `core/theories/wittman_zartman.py` — MHS + ripeness + negotiation probability
-- `core/theories/keynesian_multiplier.py` — multiplier, signed shock encoding, Okun's Law
-- `core/theories/porter_five_forces.py` — five force variables + profitability
-- `core/sim_runner.py` — tick engine, snapshots, triggers, thread-safe, asyncio-compatible
-- `requirements.txt`, ARCHITECTURE.md, README.md, CONTEXT.md all updated
-
-### Next: Week 2
-- Research adapters (arXiv, SSRN, FRED, World Bank, news/RSS)
-- Hormuz scenario port (`scenarios/hormuz/`)
-- Discuss roadmap: path to launchable app (user requested this conversation)
+2. Deployment pattern — likely Railway + Vercel
+3. Agent model design review — flagged in Week 2, not yet revisited (BDI architecture, belief updates, theory interaction)
 
 **Hormuz Crisis Simulation — Reference Scenario #1**  
 *Proof of concept sim that Crucible generalizes. Deployed and running. Key architecture and operational notes.*
@@ -436,14 +473,78 @@ Operation Epic Fury — Strait of Hormuz crisis simulation. War start: Feb 25, 2
 - Always use `python -m uvicorn` — Scripts not on PATH
 - NEVER use Vercel CLI — only `git push` to deploy frontend
 
+**Research pipeline fix list**  
+*Running list of known research adapter issues and UX fixes identified during live testing (2026-03-28)*
+
+# Research Pipeline Fix List
+
+## Source errors (dead feeds / blocked)
+
+### 404s — wrong URLs, need correct ones
+- `cfr.org/rss/world` → 404 (tried `/rss/all` then `/rss/world`, both dead — find current CFR feed)
+- `nato.int/cps/en/natohq/news.rss` → 404 (updated from old URL, still wrong)
+- `sipri.org/rss.xml` → removed, need working replacement
+- `cepr.org/vox/rss.xml` → removed, need working replacement (VoxEU)
+
+### 403s — permanently blocked, already removed
+- SSRN, Bloomberg markets feed, WSJ (feeds.a.dj.com), S&P Global, Breaking Defense
+
+## Academic sources status (live test 2026-03-28)
+
+| Source | Status | Notes |
+|--------|--------|-------|
+| OpenAlex | ✅ Working | Clean query formatter fixed zero-results issue |
+| Semantic Scholar | ❓ Silent — no log entry | Likely timeout; needs investigation |
+| arXiv | ⚠ 429 → retry → 200 | Retry works but adds 27s; IP gets blocked across session |
+| FRED direct series | ✅ Working | DCOILWTICO, CPIAUCSL, UNRATE all 200 |
+| FRED agent tool call | ❌ "no series found" | Agent passes space-separated IDs → hits search endpoint, not direct fetch |
+| World Bank | ✅ Working | |
+| News feeds | ✅ Mostly working | CFR/NATO still 404 |
+
+## UX fixes needed
+
+1. **"Research complete. Generating first question..." fires too early** — message comes after `_run_research` but agent does 2-3 more tool-call rounds before asking. Move message to after `_force_ask_user` fires.
+
+2. **No streaming updates during agent interview loops** — user sees nothing for 2+ minutes while agent runs rounds 0, 1, 2. Need to yield per-round status chunks: `"Researching: oil price shock macroeconomic impact (round 2)...\n"`
+
+3. **Semantic Scholar silent timeout** — needs error logging to surface in UI warnings.
+
+4. **FRED agent tool** — agent calls `search_fred` with space-separated series IDs (e.g. "DCOILWTICO GASREGCOVW GDPC1") which routes to text search, not direct fetch. Fix: detect space-separated uppercase IDs in FRED adapter and split + fetch individually.
+
+**Why:** User noticed 2+ minute silence with "Generating first question" message already shown. Critical for consulting UX — client must see research is still running.
+
 **revisit_agent_model**  
 *User wants to revisit the agent model design in the next session*
 
-Revisit the agent model next session.
+Revisit the agent model design — still open as of Week 6.
 
-**Why:** User flagged this as a priority follow-up after the Week 2 research adapter sprint. No specific concern stated — likely a design review of the BDI architecture, belief update mechanisms, or how agents interact with theory modules.
+**Why:** User flagged this after the Week 2 research adapter sprint. Now in Week 6+ with a working Forge UI and scoping agent. A design review of the BDI architecture (belief update mechanisms, how agents interact with theory modules) is needed before Phase 3 work.
 
-**How to apply:** At the start of the next session, surface this as the first agenda item before continuing with Week 3 work.
+**How to apply:** Surface when planning Week 7-8 work or when the user asks about simulation agent design.
+
+**Two-tier theory ensemble design**  
+*Product vision for generic library ensemble + researched custom ensemble, presented side-by-side in ensemble review*
+
+The theory ensemble review should offer two tiers:
+
+**Tier 1 — Library ensemble** (always ready)
+Domain-matched theories from the existing library. Fast, reliable fallback. Works even when academic sources are rate-limited.
+
+**Tier 2 — Discovered ensemble** (research-driven)
+Scenario-specific theories extracted fresh from academic papers during the intake run. Iran gets Hormuz closure economics + IRGC proxy dynamics. A banking crisis gets contagion diffusion. A supply chain scenario gets bullwhip dynamics.
+
+**Ensemble review panel shows both side-by-side:**
+- "Accept library recommendation"
+- "Use researched ensemble"
+- "Merge both" (combine unique theories from each)
+
+**Why:** Current flow only offers the library ensemble. Discovered theories exist but aren't surfaced as a distinct option. The custom ensemble is what makes Crucible scenario-specific rather than generic — each simulation should have a different theory stack depending on the unique dynamics of the case.
+
+**How to apply:** When building the ensemble review UI and backend:
+- Run TheoryMapper against library → Tier 1
+- Run TheoryBuilder against research results → Tier 2 (may be empty if sources rate-limited)
+- Present both in ensemble review panel with merge option
+- As discovered theories accumulate, they graduate into the library — shrinking the gap between tiers over time
 
 <!-- memory:end -->
 
