@@ -357,7 +357,7 @@ class TestBuildMarkdown:
         session = _make_session()
         md = _build_markdown(session, "test-scenario", [])
         for section in ["Executive Summary", "## Scenario", "Recommended Theory Stack",
-                         "Calibration Anchors", "Simulation Settings", "Data Gaps"]:
+                         "Calibration Anchors", "Data Gaps & Monte Carlo Guidance"]:
             assert section in md, f"Missing section: {section}"
 
     def test_contains_outcome_focus(self):
