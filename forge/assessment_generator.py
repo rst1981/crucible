@@ -335,10 +335,6 @@ def _build_markdown(
 
 {signals_md}
 
-### {ticks}-{tick_unit} Forward Projection
-
-{scenario_projection}
-
 ---
 
 ## Data Gaps & Monte Carlo Guidance
@@ -433,13 +429,6 @@ Return a JSON object with EXACTLY these keys:
 "forward_signals": list of 3-5 dicts:
   {{"signal": str, "direction": str, "confidence": str, "module": str}}
   direction: "↑" or "↓" or "→". confidence: "High"/"Medium"/"Low". module: theory_id.
-
-"scenario_base": 1 paragraph (~55% probability base case).
-"scenario_bull": 1 paragraph (~25% probability bull/upside case).
-"scenario_bear": 1 paragraph (~20% probability bear/downside case).
-"base_pct": 55
-"bull_pct": 25
-"bear_pct": 20
 
 Write in a direct, analytical consulting voice. No fluff. Return ONLY valid JSON."""
 
