@@ -32,6 +32,8 @@ from forge.gap_detector import detect_gaps, _merge_gaps
 from forge.researchers.arxiv import ArxivAdapter
 from forge.researchers.fred import FredAdapter
 from forge.researchers.news import NewsAdapter
+from forge.researchers.openalex import OpenAlexAdapter
+from forge.researchers.semantic_scholar import SemanticScholarAdapter
 from forge.researchers.ssrn import SsrnAdapter
 from forge.researchers.worldbank import WorldBankAdapter
 from forge.session import (
@@ -307,7 +309,7 @@ class ScopingAgent:
             session.domain = skeleton.domain
             session.state = ForgeState.PARALLEL_RESEARCH
 
-            yield "Running parallel research (arXiv, FRED, World Bank, news)...\n"
+            yield "Running parallel research (Semantic Scholar, OpenAlex, arXiv, FRED, World Bank, news)...\n"
             source_status = await self._run_research(session)
             self._spec_builder.apply_research_hints(session.simspec, session.research_context)
             session.gaps = detect_gaps(session.simspec)
@@ -387,23 +389,23 @@ class ScopingAgent:
         SSRN is excluded (permanently 403-blocked).
         """
         spec = session.simspec
-        # Keep academic query short and focused — arXiv handles concise queries better
         domain_query = f"{spec.domain} {spec.description} {session.intake_text}"[:200]
         actor_names = " ".join(a.name for a in spec.actors[:5])
+        # Keep academic query concise — long queries hurt relevance on all sources
         academic_query = f"{spec.domain} {spec.description[:80]} {actor_names} formal model"
 
-        # Domain-appropriate FRED series (fetched individually — series IDs, not text search)
-        fred_series = ["DCOILWTICO", "CPIAUCSL", "GDP", "UNRATE", "GASREGCOVW"]
+        async with httpx.AsyncClient(timeout=25.0) as http:
+            s2   = SemanticScholarAdapter(http)
+            oa   = OpenAlexAdapter(http)
+            fred = FredAdapter(http)
+            wb   = WorldBankAdapter(http)
+            news = NewsAdapter(http)
 
-        async with httpx.AsyncClient(timeout=20.0) as http:
-            arxiv = ArxivAdapter(http)
-            fred  = FredAdapter(http)
-            wb    = WorldBankAdapter(http)
-            news  = NewsAdapter(http)
-
+            # Run Semantic Scholar, OpenAlex, FRED, World Bank, and news in parallel.
+            # arXiv runs AFTER (sequential) to avoid rate-limit collisions with S2/OA.
             raw_results = await asyncio.gather(
-                arxiv.fetch(academic_query, max_results=5),
-                # Fetch 3 FRED series individually (series IDs route to direct fetch, not search)
+                s2.fetch(academic_query, max_results=5),
+                oa.fetch(academic_query, max_results=5),
                 fred.fetch("DCOILWTICO", max_results=1),
                 fred.fetch("CPIAUCSL", max_results=1),
                 fred.fetch("UNRATE", max_results=1),
@@ -412,8 +414,14 @@ class ScopingAgent:
                 return_exceptions=True,
             )
 
-        source_labels = ["arXiv", "FRED/DCOILWTICO", "FRED/CPIAUCSL", "FRED/UNRATE",
-                         "World Bank", "News feeds"]
+        # arXiv: single sequential call after other sources complete (avoids 429 collisions)
+        async with httpx.AsyncClient(timeout=25.0) as http:
+            arxiv_results = await ArxivAdapter(http).fetch(academic_query, max_results=5)
+
+        raw_results = list(raw_results) + [arxiv_results]
+
+        source_labels = ["Semantic Scholar", "OpenAlex", "FRED/DCOILWTICO",
+                         "FRED/CPIAUCSL", "FRED/UNRATE", "World Bank", "News feeds", "arXiv"]
         source_status: dict[str, str] = {}
 
         ctx = session.research_context
