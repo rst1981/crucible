@@ -219,10 +219,19 @@ class TheoryMapper:
         return results
 
     def recommend_from_spec(self, spec: "SimSpec", n: int = 6) -> list[TheoryRecommendation]:
-        """Convenience wrapper — extracts domain and description from a SimSpec."""
+        """Convenience wrapper — extracts domain and description from a SimSpec.
+
+        Augments description with outcome_focus and transmission channels from metadata
+        so that even if the agent sets domain='geopolitics' for a supply-chain scenario,
+        the description tokens still drive theory selection toward the right models.
+        """
+        meta = spec.metadata or {}
+        outcome = meta.get("outcome_focus", "")
+        channels = " ".join(meta.get("transmission_channels", []))
+        description = " ".join(filter(None, [spec.description, outcome, channels]))
         return self.recommend(
             domain=spec.domain,
-            description=spec.description,
+            description=description,
             n=n,
         )
 

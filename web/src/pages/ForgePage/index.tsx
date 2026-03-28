@@ -24,6 +24,7 @@ export function ForgePage() {
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [gapResearching, setGapResearching] = useState(false)
   const [gapResearchLog, setGapResearchLog] = useState<string>('')
+  const [activeTab, setActiveTab] = useState<'interview' | 'ensemble'>('interview')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const cancelStreamRef = useRef<(() => void) | null>(null)
 
@@ -46,10 +47,11 @@ export function ForgePage() {
     return () => clearInterval(interval)
   }, [runs])
 
-  // When entering ensemble_review, load library for custom builder
+  // When entering ensemble_review, load library and switch to ensemble tab
   useEffect(() => {
     if (session?.state === 'ensemble_review' || session?.state === 'complete') {
       theoryApi.list().then(r => setLibraryTheories(r.theories ?? [])).catch(() => {})
+      setActiveTab('ensemble')
     }
   }, [session?.state])
 
@@ -177,6 +179,7 @@ export function ForgePage() {
   }
 
   const inEnsembleReview = session?.state === 'ensemble_review' || session?.state === 'complete'
+  const hasEnsemble = inEnsembleReview || (session?.recommended_theories?.length ?? 0) > 0
   const hasCustom = session?.custom_theories != null && session.custom_theories.length > 0
 
   // ── Pre-session intake form ────────────────────────────────────────────────
@@ -208,8 +211,42 @@ export function ForgePage() {
     )
   }
 
+  // ── Tab bar (shown once session exists and ensemble has been reached) ────────
+  const TabBar = () => {
+    if (!session || !hasEnsemble) return null
+    return (
+      <div className="border-b border-border flex items-center px-4 gap-1 shrink-0">
+        <button
+          onClick={() => setActiveTab('interview')}
+          className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
+            activeTab === 'interview'
+              ? 'border-accent text-accent'
+              : 'border-transparent text-text-secondary hover:text-text-primary'
+          }`}
+        >
+          Interview
+        </button>
+        <button
+          onClick={() => setActiveTab('ensemble')}
+          className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
+            activeTab === 'ensemble'
+              ? 'border-accent text-accent'
+              : 'border-transparent text-text-secondary hover:text-text-primary'
+          }`}
+        >
+          Ensemble
+          {(session.recommended_theories?.length ?? 0) > 0 && (
+            <span className="ml-1.5 text-text-tertiary">
+              {session.recommended_theories.length}
+            </span>
+          )}
+        </button>
+      </div>
+    )
+  }
+
   // ── Ensemble Review + Go Page ──────────────────────────────────────────────
-  if (inEnsembleReview) {
+  if (inEnsembleReview && activeTab === 'ensemble') {
     const recs: Theory[] = session.recommended_theories ?? []
     const discovered: Theory[] = session.discovered_theories ?? []
     const hasTwoTiers = discovered.length > 0
@@ -250,13 +287,15 @@ export function ForgePage() {
     }
 
     const GapResearchPanel = () => {
-      if (!session?.data_gaps?.length) return null
+      const resolvable = session?.data_gaps ?? []
+      const proprietary = session?.proprietary_gaps ?? []
+      if (!resolvable.length && !proprietary.length) return null
+
       const [open, setOpen] = useState(true)
-      const gaps = session.data_gaps ?? []
-      const closed = session.closed_gaps ?? []
-      const remaining = session.remaining_gaps ?? []
+      const closed = session?.closed_gaps ?? []
+      const remaining = session?.remaining_gaps ?? []
       const resolvedCount = closed.length
-      const totalCount = gaps.length
+      const totalResolvable = resolvable.length
 
       return (
         <div className="border border-border rounded-lg bg-surface">
@@ -266,10 +305,10 @@ export function ForgePage() {
           >
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-text-primary">Data Gaps</span>
-              <span className="badge-gray">{totalCount}</span>
-              {session.gap_research_complete && (
-                <span className={resolvedCount === totalCount ? 'badge-green' : 'badge-yellow'}>
-                  {resolvedCount}/{totalCount} resolved
+              <span className="badge-gray">{resolvable.length + proprietary.length}</span>
+              {session?.gap_research_complete && (
+                <span className={resolvedCount === totalResolvable ? 'badge-green' : 'badge-yellow'}>
+                  {resolvedCount}/{totalResolvable} resolved
                 </span>
               )}
             </div>
@@ -277,29 +316,62 @@ export function ForgePage() {
           </button>
 
           {open && (
-            <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
-              <ul className="space-y-1">
-                {gaps.map((gap, i) => {
-                  const isClosed = closed.includes(gap)
-                  const isRemaining = remaining.includes(gap)
-                  return (
-                    <li key={i} className="text-xs text-text-secondary flex items-start gap-1.5">
-                      <span className={isClosed ? 'text-green-400' : isRemaining ? 'text-text-secondary/50' : ''}>
-                        {isClosed ? '✓' : isRemaining ? '○' : '·'}
-                      </span>
-                      <span className={isClosed ? 'line-through text-text-secondary/50' : ''}>{gap}</span>
-                    </li>
-                  )
-                })}
-              </ul>
+            <div className="px-4 pb-4 space-y-4 border-t border-border pt-3">
 
-              <button
-                className="btn-primary text-xs py-1 px-3"
-                onClick={handleGapResearch}
-                disabled={gapResearching || session.gap_research_complete}
-              >
-                {gapResearching ? 'Researching…' : session.gap_research_complete ? 'Research complete' : 'Research gaps'}
-              </button>
+              {/* Proprietary gaps */}
+              {proprietary.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-text-secondary uppercase tracking-wide">Proprietary / Unavailable</p>
+                  <ul className="space-y-1.5">
+                    {proprietary.map((gap, i) => (
+                      <li key={i} className="text-xs text-text-secondary flex items-start gap-1.5">
+                        <span className="text-text-secondary/40 mt-0.5">⊘</span>
+                        <span>{gap}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-text-secondary/50 italic">
+                    These require firm-level or confidential data. A source upload feature is planned.
+                  </p>
+                </div>
+              )}
+
+              {/* Resolvable gaps */}
+              {resolvable.length > 0 && (
+                <div className="space-y-2">
+                  {proprietary.length > 0 && (
+                    <p className="text-xs font-medium text-text-secondary uppercase tracking-wide">Resolvable via Research</p>
+                  )}
+                  <ul className="space-y-1">
+                    {resolvable.map((gap, i) => {
+                      const isClosed = closed.includes(gap)
+                      const isRemaining = remaining.includes(gap)
+                      return (
+                        <li key={i} className="text-xs text-text-secondary flex items-start gap-1.5">
+                          <span className={isClosed ? 'text-green-400' : isRemaining ? 'text-text-secondary/50' : ''}>
+                            {isClosed ? '✓' : isRemaining ? '○' : '·'}
+                          </span>
+                          <span className={isClosed ? 'line-through text-text-secondary/50' : ''}>{gap}</span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+
+                  {!session?.gap_research_complete && (
+                    <p className="text-xs text-text-secondary/60">
+                      Launch a targeted research pass to fill these from FRED, OpenAlex, and news sources.
+                    </p>
+                  )}
+
+                  <button
+                    className="btn-primary text-xs py-1 px-3"
+                    onClick={handleGapResearch}
+                    disabled={gapResearching || session?.gap_research_complete}
+                  >
+                    {gapResearching ? 'Researching…' : session?.gap_research_complete ? 'Research complete' : 'Research gaps'}
+                  </button>
+                </div>
+              )}
 
               {gapResearchLog && (
                 <pre className="text-xs text-text-secondary/70 bg-bg rounded p-2 overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
@@ -307,9 +379,9 @@ export function ForgePage() {
                 </pre>
               )}
 
-              {session.gap_research_complete && (
-                <p className={`text-xs font-medium ${resolvedCount === totalCount ? 'text-green-400' : 'text-yellow-400'}`}>
-                  {resolvedCount}/{totalCount} gaps resolved
+              {session?.gap_research_complete && (
+                <p className={`text-xs font-medium ${resolvedCount === totalResolvable ? 'text-green-400' : 'text-yellow-400'}`}>
+                  {resolvedCount}/{totalResolvable} resolvable gaps closed
                 </p>
               )}
             </div>
@@ -319,7 +391,9 @@ export function ForgePage() {
     }
 
     return (
-      <div className="flex h-full overflow-hidden">
+      <div className="flex flex-col h-full overflow-hidden">
+        <TabBar />
+        <div className="flex flex-1 overflow-hidden">
         {/* Left: theory cards */}
         <div className="flex-1 flex flex-col min-w-0 overflow-y-auto p-6 space-y-6">
 
@@ -612,13 +686,16 @@ export function ForgePage() {
             </button>
           </div>
         </div>
+        </div>
       </div>
     )
   }
 
   // ── Active interview session ───────────────────────────────────────────────
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
+      <TabBar />
+      <div className="flex flex-1 overflow-hidden">
       {/* Chat panel */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Status bar */}
@@ -738,6 +815,7 @@ export function ForgePage() {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   )

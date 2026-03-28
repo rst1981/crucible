@@ -92,6 +92,7 @@ export interface ForgeSession {
   custom_theories: TheoryRecommendation[] | null
   assessment_path: string | null
   data_gaps: string[]
+  proprietary_gaps: string[]
   gap_research_running: boolean
   gap_research_complete: boolean
   closed_gaps: string[]

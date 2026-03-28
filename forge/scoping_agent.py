@@ -29,7 +29,6 @@ from anthropic import Anthropic
 
 from core.spec import SimSpec, TheoryRef
 from forge.gap_detector import detect_gaps, _merge_gaps
-from forge.researchers.arxiv import ArxivAdapter
 from forge.researchers.fred import FredAdapter
 from forge.researchers.news import NewsAdapter
 from forge.researchers.openalex import OpenAlexAdapter
@@ -70,7 +69,7 @@ Key rules:
    certainty, use a reasonable default informed by research and flag it
    in the SimSpec metadata.
 4. STRICT TOOL ORDER — follow this exactly, one step per round:
-   a. Run research tools (search_arxiv, search_news, get_data) in parallel.
+   a. Run research tools (search_news, search_fred, search_world_bank) in parallel.
    b. Call update_simspec ONCE with everything learned from research.
    c. Call ask_user for the highest-priority open gap (outcome_focus first, always).
    d. When the user replies, call update_simspec ONCE with their answer, then ask_user for the next gap.
@@ -85,21 +84,6 @@ Key rules:
 # ── Tool schemas ───────────────────────────────────────────────────────────
 
 _TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "search_arxiv",
-        "description": (
-            "Search arXiv preprints for academic research relevant to the scenario. "
-            "Use for theoretical frameworks, empirical studies, domain models."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query":       {"type": "string"},
-                "max_results": {"type": "integer", "default": 5, "maximum": 10},
-            },
-            "required": ["query"],
-        },
-    },
     {
         "name": "search_fred",
         "description": (
@@ -423,15 +407,11 @@ class ScopingAgent:
             else:
                 s2_results = []
 
-        # arXiv: single sequential call last (avoids 429 collisions with academic APIs)
-        async with httpx.AsyncClient(timeout=25.0) as http:
-            arxiv_results = await ArxivAdapter(http).fetch(academic_query, max_results=5)
-
-        raw_results = list(raw_results) + [s2_results, arxiv_results]
+        raw_results = list(raw_results) + [s2_results]
 
         source_labels = ["OpenAlex", "FRED/DCOILWTICO",
                          "FRED/CPIAUCSL", "FRED/UNRATE", "World Bank", "News feeds",
-                         "Semantic Scholar", "arXiv"]
+                         "Semantic Scholar"]
         source_status: dict[str, str] = {}
 
         ctx = session.research_context
@@ -935,9 +915,7 @@ Rules:
             )
             new_results.extend([r for r in oa_results if r.ok])
             new_results.extend([r for r in oa_empirical if r.ok])
-            # arXiv as bonus — may 429, but OpenAlex already covers the gap
-            arxiv_results = await ArxivAdapter(http).fetch(q_theory, max_results=3)
-            new_results.extend([r for r in arxiv_results if r.ok])
+            # arXiv removed — OpenAlex + S2 cover academic paper corpus without 429s
 
         if new_results:
             session.research_context.results.extend(new_results)
@@ -985,7 +963,28 @@ Do NOT mention tool parameters or code. Write for a strategy consultant, not a d
     async def _run_theory_mapping(self, session: ForgeSession) -> str:
         # Include any theories auto-added to the library during research
         # in the mapper's candidate pool (they're already registered).
-        recommendations = self._theory_mapper.recommend_from_spec(session.simspec)
+        #
+        # Domain override: if simspec.domain is a pure geopolitical label but
+        # outcome_focus signals economics/supply-chain, remap to a richer domain
+        # string so the theory mapper scores commodity/market/logistics theories.
+        spec = session.simspec
+        meta = spec.metadata or {} if spec else {}
+        outcome = meta.get("outcome_focus", "").lower()
+        channels = " ".join(meta.get("transmission_channels", [])).lower()
+        economic_signals = {"supply chain", "logistics", "cost", "commodity", "margin",
+                            "pricing", "procurement", "freight", "inflation", "hedging",
+                            "sourcing", "input cost", "fuel", "shipping"}
+        if spec and spec.domain in ("geopolitics", "conflict", "crisis") and any(
+            sig in outcome or sig in channels for sig in economic_signals
+        ):
+            import dataclasses
+            spec = dataclasses.replace(
+                spec,
+                domain=f"{spec.domain} supply_chain commodity market logistics economics"
+            )
+            logger.info("_run_theory_mapping: expanded domain from '%s' to include economic signals",
+                        session.simspec.domain)
+        recommendations = self._theory_mapper.recommend_from_spec(spec)
 
         # Split into Tier 1 (library) and Tier 2 (discovered this session).
         # discovered theories have source == "discovered" from TheoryMapper.
@@ -1027,6 +1026,8 @@ Do NOT mention tool parameters or code. Write for a strategy consultant, not a d
 
         # Enrich all theories with application notes (single haiku call)
         await self._add_application_notes(session)
+        # Identify data gaps now so the frontend panel is populated at ensemble review time
+        await self._identify_data_gaps(session)
         recs = session.recommended_theories
         discovered = session.discovered_theories
 
@@ -1135,6 +1136,79 @@ One note per theory in the same order. Return ONLY valid JSON."""
         except Exception as exc:
             logger.warning("_add_application_notes failed: %s", exc)
 
+    async def _identify_data_gaps(self, session: ForgeSession) -> None:
+        """
+        Identify data gaps based on research results and scenario spec.
+        Populates session.data_gaps before ensemble review so the frontend can show them.
+        """
+        if session.data_gaps:
+            return  # already populated (e.g. from a previous call)
+
+        ctx = session.research_context
+        spec = session.simspec
+        if not spec:
+            return
+
+        # Summarise what data was found vs missing
+        sources_ok = [r.source_type for r in ctx.results if r.ok]
+        sources_failed = [r.source_type for r in ctx.results if not r.ok]
+        param_names = list(ctx.parameter_estimates.keys()) if ctx.parameter_estimates else []
+
+        prompt = f"""Scenario: {spec.name}
+Domain: {spec.domain}
+Actors: {', '.join(a.name for a in spec.actors[:5]) if spec.actors else 'unknown'}
+Outcome focus: {(spec.metadata or {}).get('outcome_focus', '')}
+
+Research sources that returned data: {', '.join(set(sources_ok)) or 'none'}
+Research sources that failed/returned nothing: {', '.join(set(sources_failed)) or 'none'}
+Parameters calibrated from data: {', '.join(param_names[:10]) or 'none'}
+
+Identify data gaps in two categories:
+
+1. PROPRIETARY gaps — firm-level or confidential data that public sources cannot provide
+   (e.g. internal inventory levels, franchise margin data, company-specific hedging positions)
+
+2. RESOLVABLE gaps — gaps that public data sources (FRED, World Bank, academic papers, news)
+   could plausibly fill
+   (e.g. historical freight rate indices, food CPI elasticity to oil shocks, past Hormuz
+   closure price impacts, commodity spot prices during Middle East conflicts)
+
+Return 2-4 of each type.
+
+Return JSON:
+{{
+  "proprietary_gaps": ["gap 1", "gap 2"],
+  "resolvable_gaps": ["gap 1", "gap 2", "gap 3"]
+}}
+Return ONLY valid JSON."""
+
+        try:
+            resp = self._client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=256,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = resp.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            parsed = json.loads(raw)
+            session.data_gaps = [
+                str(g).lstrip("- ").strip()
+                for g in parsed.get("resolvable_gaps", []) if g
+            ]
+            session.proprietary_gaps = [
+                str(g).lstrip("- ").strip()
+                for g in parsed.get("proprietary_gaps", []) if g
+            ]
+            logger.info(
+                "_identify_data_gaps: %d resolvable, %d proprietary",
+                len(session.data_gaps), len(session.proprietary_gaps)
+            )
+        except Exception as exc:
+            logger.warning("_identify_data_gaps failed: %s", exc)
+
     # ── Gap research loop ──────────────────────────────────────────────────
 
     async def run_gap_research(self, session: ForgeSession) -> AsyncIterator[str]:
@@ -1153,13 +1227,16 @@ One note per theory in the same order. Return ONLY valid JSON."""
             yield "No data gaps to research.\n"
             return
 
-        # Batch all gaps into research queries via a single haiku call
+        # Batch all gaps into two query sets: academic (OpenAlex) and FRED series IDs
         gap_list_text = "\n".join(f"{i+1}. {g}" for i, g in enumerate(gaps))
         query_prompt = (
-            f"Convert each data gap into a 3-5 word academic search query.\n\n"
+            f"For each data gap, produce:\n"
+            f"  - An academic search query (3-5 keywords for OpenAlex)\n"
+            f"  - A FRED series ID if one exists (e.g. DCOILWTICO, WPS012, CPIAUCSL), or null\n\n"
             f"Data gaps:\n{gap_list_text}\n\n"
-            f"Return ONLY valid JSON: {{\"queries\": [\"query1\", \"query2\", ...]}}\n"
-            f"One query per gap, in the same order."
+            f"Return ONLY valid JSON:\n"
+            f"{{\"queries\": [\"query1\", ...], \"fred_ids\": [\"SERIES_ID_OR_NULL\", ...]}}\n"
+            f"Same order as gaps. Use null (not a string) if no FRED series applies."
         )
         try:
             resp = self._client.messages.create(
@@ -1172,12 +1249,17 @@ One note per theory in the same order. Return ONLY valid JSON."""
                 raw = raw.split("```")[1]
                 if raw.startswith("json"):
                     raw = raw[4:]
-            queries = json.loads(raw).get("queries", [])
+            parsed = json.loads(raw)
+            queries = parsed.get("queries", [])
+            fred_ids = parsed.get("fred_ids", [])
             if not isinstance(queries, list) or not queries:
-                queries = gaps[:3]  # fallback: use gap text directly
+                queries = gaps[:3]
+            if not isinstance(fred_ids, list):
+                fred_ids = []
         except Exception as exc:
             logger.warning("run_gap_research: query distillation failed: %s", exc)
             queries = gaps[:3]
+            fred_ids = []
 
         yield f"Researching {len(gaps)} data gaps in parallel...\n"
 
@@ -1192,8 +1274,11 @@ One note per theory in the same order. Return ONLY valid JSON."""
             fetch_tasks = []
             for q in queries:
                 fetch_tasks.append(oa.fetch(q, max_results=3))
-                fetch_tasks.append(fred.fetch(q, max_results=2))
                 fetch_tasks.append(news.fetch(q, max_results=2, category="economics"))
+            # FRED: only fetch series IDs that haiku identified as valid
+            for sid in fred_ids:
+                if sid and isinstance(sid, str) and sid.upper() not in ("NULL", "NONE", "N/A"):
+                    fetch_tasks.append(fred.fetch(sid.upper(), max_results=1))
 
             raw_results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
 
@@ -1355,14 +1440,6 @@ Return empty lists/objects if nothing qualifies."""
         """
         ctx = session.research_context
 
-        if name == "search_arxiv":
-            async with httpx.AsyncClient(timeout=15.0) as http:
-                results = await ArxivAdapter(http).fetch(
-                    inputs["query"], max_results=inputs.get("max_results", 5)
-                )
-            ctx.results.extend(results)
-            return [r.to_context_snippet() for r in results if r.ok], False
-
         if name == "search_ssrn":
             async with httpx.AsyncClient(timeout=15.0) as http:
                 results = await SsrnAdapter(http).fetch(
@@ -1399,6 +1476,15 @@ Return empty lists/objects if nothing qualifies."""
 
         if name == "update_simspec":
             patch = inputs.get("patch", {})
+            # Block timeframe_ticks from being auto-filled before the user is asked.
+            # Only allow it once the timeframe gap has been explicitly filled by the user.
+            if "timeframe_ticks" in patch:
+                timeframe_gap = next(
+                    (g for g in session.gaps if g.field_path == "timeframe"), None
+                )
+                if not (timeframe_gap and timeframe_gap.filled):
+                    patch = {k: v for k, v in patch.items() if k != "timeframe_ticks"}
+                    logger.debug("update_simspec: blocked auto-fill of timeframe_ticks")
             _apply_patch(session.simspec, patch)
             open_gaps = session.open_gaps()
             remaining = [
