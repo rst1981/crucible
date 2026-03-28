@@ -59,20 +59,6 @@ def detect_gaps(simspec: SimSpec) -> list[SpecGap]:
             priority=0.80,
         ))
 
-    if not simspec.theories:
-        gaps.append(SpecGap(
-            field_path="theories",
-            description="No theory modules selected — theory mapping will handle this automatically.",
-            priority=0.50,  # low: theory mapper handles this after interview
-        ))
-
-    if not simspec.metrics:
-        gaps.append(SpecGap(
-            field_path="metrics",
-            description="No outcome metrics defined — what should we track and report?",
-            priority=0.40,
-        ))
-
     return gaps
 
 

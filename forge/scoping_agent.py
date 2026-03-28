@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Callable
 
 import httpx
 from anthropic import Anthropic
@@ -274,7 +274,10 @@ class ScopingAgent:
         if session.state == ForgeState.INTAKE:
             return await self._run_intake(session)
         if session.state == ForgeState.DYNAMIC_INTERVIEW:
-            return await self._run_interview_turn(session, user_message)
+            reply = ""
+            async for chunk in self._run_interview_turn(session, user_message):
+                reply = chunk
+            return reply
         if session.state == ForgeState.THEORY_MAPPING:
             return await self._run_theory_mapping(session)
         if session.state == ForgeState.ENSEMBLE_REVIEW:
@@ -343,13 +346,15 @@ class ScopingAgent:
                 )
 
             ok_count = sum(1 for v in source_status.values() if v == "ok" or v.startswith("partial"))
-            yield f"Research complete ({ok_count}/{len(source_status)} sources). Generating first question...\n"
-            reply = await self._run_interview_turn(session, user_message=None)
-            yield reply
+            yield f"Research complete ({ok_count}/{len(source_status)} sources).\n"
+            reply = ""
+            async for chunk in self._run_interview_turn(session, user_message=None):
+                yield chunk
+                reply = chunk
 
         elif session.state == ForgeState.DYNAMIC_INTERVIEW:
-            reply = await self._run_interview_turn(session, user_message)
-            yield reply
+            async for chunk in self._run_interview_turn(session, user_message):
+                yield chunk
 
         elif session.state == ForgeState.ENSEMBLE_REVIEW:
             # User message during review means "proceed with current ensemble"
@@ -380,7 +385,10 @@ class ScopingAgent:
         self._mark_research_filled_gaps(session)
         session.state = ForgeState.DYNAMIC_INTERVIEW
 
-        return await self._run_interview_turn(session, user_message=None)
+        reply = ""
+        async for chunk in self._run_interview_turn(session, user_message=None):
+            reply = chunk
+        return reply
 
     async def _run_research(self, session: ForgeSession) -> dict[str, str]:
         """
@@ -472,7 +480,7 @@ class ScopingAgent:
         """
         try:
             resp = self._client.messages.create(
-                model=_HAIKU,
+                model="claude-haiku-4-5-20251001",
                 max_tokens=80,
                 messages=[{
                     "role": "user",
@@ -613,8 +621,9 @@ Rules:
         self,
         session: ForgeSession,
         user_message: str | None,
-    ) -> str:
+    ) -> AsyncIterator[str]:
         deep_dive_summary: str | None = None
+        just_filled: set[str] = set()
 
         if user_message:
             previously_open = {g.field_path for g in session.open_gaps()}
@@ -625,9 +634,31 @@ Rules:
             _merge_gaps(session.gaps, new_gaps)
             self._mark_research_filled_gaps(session)
 
-            # If outcome_focus was just filled: run targeted theory deep-dive
             now_open = {g.field_path for g in session.open_gaps()}
             just_filled = previously_open - now_open
+
+            # Clean up raw outcome_focus text → concise summary
+            if "outcome_focus" in just_filled:
+                raw_focus = session.simspec.metadata.get("outcome_focus", "")
+                if raw_focus and len(raw_focus) > 80:
+                    try:
+                        clean_resp = self._client.messages.create(
+                            model="claude-haiku-4-5-20251001",
+                            max_tokens=80,
+                            messages=[{
+                                "role": "user",
+                                "content": (
+                                    f"Summarize this simulation outcome focus in 1-2 concise sentences "
+                                    f"suitable as a document heading. Focus on what metrics to track and "
+                                    f"what decision it informs. No filler words.\n\n{raw_focus}"
+                                ),
+                            }],
+                        )
+                        session.simspec.metadata["outcome_focus"] = clean_resp.content[0].text.strip()
+                    except Exception:
+                        pass  # keep raw if haiku fails
+
+            # If outcome_focus was just filled: run targeted theory deep-dive
             if "outcome_focus" in just_filled and not session.deep_dive_complete:
                 deep_dive_summary = await self._run_outcome_deepdive(session)
                 session.deep_dive_complete = True
@@ -643,23 +674,52 @@ Rules:
         if not open_gaps or session.turn_count >= MAX_TURNS:
             self._auto_fill_gaps(session)
             session.state = ForgeState.THEORY_MAPPING
-            return await self._run_theory_mapping(session)
+            reply = await self._run_theory_mapping(session)
+            yield reply
+            return
 
-        # Use Claude tool-use for the next question
-        next_reply = await self._agent_turn(session)
+        # Use Claude tool-use for the next question, streaming status updates
+        status_queue: asyncio.Queue = asyncio.Queue()
+
+        def _on_round(round_num: int, tool_names: list[str]) -> None:
+            search_tools = [t for t in tool_names if t.startswith("search_")]
+            if search_tools and round_num > 0:
+                queries = ", ".join(t.replace("search_", "") for t in search_tools[:2])
+                status_queue.put_nowait(f"Still researching ({queries})...\n")
+
+        messages = _build_claude_messages(session)
+        agent_task = asyncio.create_task(
+            self._agent_turn(session, messages=messages, on_round=_on_round)
+        )
+
+        while not agent_task.done():
+            try:
+                msg = await asyncio.wait_for(asyncio.shield(status_queue.get()), timeout=0.1)
+                yield msg
+            except asyncio.TimeoutError:
+                await asyncio.sleep(0.1)
+
+        next_reply = await agent_task
 
         if deep_dive_summary:
-            return f"{deep_dive_summary}\n\n---\n\n{next_reply}"
-        return next_reply
+            yield f"{deep_dive_summary}\n\n---\n\n{next_reply}"
+        else:
+            yield next_reply
 
-    async def _agent_turn(self, session: ForgeSession) -> str:
+    async def _agent_turn(
+        self,
+        session: ForgeSession,
+        messages: list | None = None,
+        on_round: Callable[[int, list[str]], None] | None = None,
+    ) -> str:
         """
         Run one Claude tool-use turn. The agent can call research tools,
         update_simspec, identify_gap, and ask_user. We loop until ask_user
         or finalize is called, then return.
         """
         # Build conversation for Claude
-        messages = _build_claude_messages(session)
+        if messages is None:
+            messages = _build_claude_messages(session)
 
         # Inject current spec state as context
         spec_summary = _spec_summary(session.simspec)
@@ -708,7 +768,10 @@ Rules:
             # Extract text and tool calls
             text_blocks = [b for b in resp.content if b.type == "text"]
             tool_blocks = [b for b in resp.content if b.type == "tool_use"]
-            logger.info("_agent_turn round %d: tools=%s", round_num, [b.name for b in tool_blocks])
+            tool_names = [b.name for b in tool_blocks]
+            logger.info("_agent_turn round %d: tools=%s", round_num, tool_names)
+            if on_round:
+                on_round(round_num, tool_names)
 
             if not tool_blocks:
                 # Pure text response — return it
@@ -739,7 +802,6 @@ Rules:
                     asked_user = True
                     final_reply = result.get("question", str(result))
 
-            tool_names = [b.name for b in tool_blocks]
             messages.append({"role": "user", "content": tool_results})
 
             # After first update_simspec without ask_user: force a constrained ask call
@@ -793,11 +855,19 @@ Rules:
             "Use consulting language — no technical parameters. "
             "You MUST call the ask_user tool."
         )
+        if top_gap.field_path == "theories":
+            extra = (
+                "\n\nIMPORTANT: Always include 'Let the model select theories empirically "
+                "based on research findings' as the first or last suggested option."
+            )
+        else:
+            extra = ""
         user_msg = (
             f"Current SimSpec:\n{spec_summary}\n\n"
             f"Ask the consultant about this gap:\n"
             f"  Field: {top_gap.field_path}\n"
             f"  Question: {top_gap.description}"
+            f"{extra}"
         )
 
         try:
@@ -1063,7 +1133,10 @@ One note per theory in the same order. Return ONLY valid JSON."""
                 session.gaps.append(gap)
             if session.turn_count < MAX_TURNS:
                 session.state = ForgeState.DYNAMIC_INTERVIEW
-                return await self._run_interview_turn(session, user_message=None)
+                reply = ""
+                async for chunk in self._run_interview_turn(session, user_message=None):
+                    reply = chunk
+                return reply
             # Give up and return partial
             session.mark_complete()
             return (
