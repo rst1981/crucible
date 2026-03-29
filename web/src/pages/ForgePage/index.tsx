@@ -186,7 +186,7 @@ export function ForgePage() {
   const handleGenerate = async () => {
     setGenerating(true)
     try {
-      const res = await fetch('/forge/generate-scenario', { method: 'POST' })
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + '/forge/generate-scenario', { method: 'POST' })
       const data = await res.json()
       if (data.scenario) setIntakeText(data.scenario)
     } catch (e) {

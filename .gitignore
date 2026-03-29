@@ -36,3 +36,6 @@ Thumbs.db
 # Local dev
 *.log
 .gstack/
+
+# Session data (ephemeral, not committed)
+data/sessions/*.json

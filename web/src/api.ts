@@ -1,4 +1,4 @@
-const BASE = ''  // proxied via Vite dev server
+const BASE = import.meta.env.VITE_API_URL || ''
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(BASE + path, {
@@ -78,7 +78,7 @@ export function streamGapResearch(
   onError: (detail: string) => void,
 ): () => void {
   const ctrl = new AbortController()
-  fetch(`/forge/intake/${session_id}/research-gaps`, {
+  fetch(`${BASE}/forge/intake/${session_id}/research-gaps`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     signal: ctrl.signal,
@@ -118,7 +118,7 @@ export function streamForgeMessage(
   onError: (detail: string) => void,
 ): () => void {
   const ctrl = new AbortController()
-  fetch(`/forge/intake/${session_id}/message`, {
+  fetch(`${BASE}/forge/intake/${session_id}/message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message }),
