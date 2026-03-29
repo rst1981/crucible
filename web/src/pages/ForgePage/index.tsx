@@ -20,6 +20,7 @@ export function ForgePage() {
   const [assessmentDone, setAssessmentDone] = useState(false)
   const [generatingFindings, setGeneratingFindings] = useState(false)
   const [findingsDone, setFindingsDone] = useState(false)
+  const [findingsError, setFindingsError] = useState<string | null>(null)
   const [runMode, setRunMode] = useState<RunMode>('recommended')
   const [customTheories, setCustomTheories] = useState<Theory[]>([])
   const [buildingCustom, setBuildingCustom] = useState(false)
@@ -126,15 +127,20 @@ export function ForgePage() {
   const handleGenerateFindings = async () => {
     if (!session) return
     setGeneratingFindings(true)
+    setFindingsError(null)
     try {
       const apiBase = import.meta.env.VITE_API_URL || ''
       const res = await fetch(`${apiBase}/forge/intake/${session.session_id}/findings`, { method: 'POST' })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || `HTTP ${res.status}`)
+      }
       setFindingsDone(true)
       const updated = await forgeApi.getSession(session.session_id)
       setSession(updated)
-    } catch (e) {
+    } catch (e: any) {
       console.error('Findings generation failed', e)
+      setFindingsError(e.message || 'Findings generation failed')
     } finally {
       setGeneratingFindings(false)
     }
@@ -647,6 +653,11 @@ export function ForgePage() {
 
           {/* Findings document */}
           <div className="border border-border rounded-lg p-4">
+            {findingsError && (
+              <div className="mb-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2">
+                ⚠ Findings failed: {findingsError}
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-text-primary">Findings Document</p>

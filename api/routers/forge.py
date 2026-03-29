@@ -444,21 +444,30 @@ async def generate_findings(session_id: str) -> dict:
 
     # Launch sim with recommended theories
     from api.routers.simulations import SimulationRun, _execute_run, _runs
-    from core.spec import TheoryRef
+
+    if not session.simspec:
+        raise HTTPException(status_code=409, detail="SimSpec not built — complete the interview first")
+
+    active = session.active_theories
+    if not active:
+        raise HTTPException(status_code=409, detail="No theories in ensemble — complete ensemble review first")
 
     spec_dict = session.simspec.model_dump()
     spec_dict["theories"] = [
         {"theory_id": t["theory_id"], "priority": t.get("suggested_priority", i), "parameters": t.get("parameters", {})}
-        for i, t in enumerate(session.recommended_theories)
+        for i, t in enumerate(active)
     ]
 
     run = SimulationRun(session_id=session_id, ensemble_type="recommended",
-                        theory_ids=[t["theory_id"] for t in session.recommended_theories])
+                        theory_ids=[t["theory_id"] for t in active])
     _runs[run.sim_id] = run
 
-    # Run sim directly (await keeps us in the same event loop)
+    # Run sim — cap at 3 minutes to avoid Railway/Vercel gateway timeout
     try:
-        await _execute_run(run, spec_dict)
+        await asyncio.wait_for(_execute_run(run, spec_dict), timeout=180.0)
+    except asyncio.TimeoutError:
+        run.status = "error"
+        run.error  = "Simulation timed out after 180s"
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Simulation failed: {exc}")
 
