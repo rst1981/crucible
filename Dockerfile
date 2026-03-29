@@ -11,6 +11,7 @@ COPY api/        ./api/
 COPY core/       ./core/
 COPY forge/      ./forge/
 COPY scenarios/  ./scenarios/
+COPY scripts/    ./scripts/
 
 # Session persistence directory
 RUN mkdir -p data/sessions data/theories/pending
