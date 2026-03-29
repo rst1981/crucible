@@ -30,5 +30,9 @@ feedparser==6.0.11       # RSS news adapter
 pytest==8.3.4
 pytest-asyncio==0.24.0
 
+# PDF generation
+markdown==3.7
+xhtml2pdf==0.2.16
+
 # Dev utilities
 python-dotenv==1.0.1     # .env loading for local dev
