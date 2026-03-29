@@ -32,43 +32,38 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/forge", tags=["forge"])
 
 
-# ── Session store with disk persistence ────────────────────────────────────
+# ── Session store (Postgres on Railway, file fallback for local dev) ─────────
 
 import pathlib, json as _json
-
-_SESSION_DIR = pathlib.Path(__file__).parent.parent.parent / "data" / "sessions"
-_SESSION_DIR.mkdir(parents=True, exist_ok=True)
+from forge import session_store as _store
 
 _sessions: dict[str, ForgeSession] = {}
 
 
-def _session_path(session_id: str) -> pathlib.Path:
-    return _SESSION_DIR / f"{session_id}.json"
-
-
 def _save_session(session: ForgeSession) -> None:
+    """Fire-and-forget async save — creates a task so we never block the request."""
     try:
-        _session_path(session.session_id).write_text(
-            _json.dumps(session.to_dict(), default=str), encoding="utf-8"
-        )
-    except Exception as exc:
-        logger.warning("Session save failed: %s", exc)
+        asyncio.get_event_loop().create_task(_store.save(session.to_dict()))
+    except RuntimeError:
+        # No running loop (e.g. during tests) — skip
+        pass
 
 
-def _load_sessions() -> None:
-    """Load all saved sessions from disk on startup."""
+async def _load_sessions() -> None:
+    """Load all persisted sessions into memory on startup."""
+    await _store.init()
+    all_data = await _store.load_all()
     from forge.session import ForgeState, ResearchContext, SpecGap
     from core.spec import SimSpec
-    for path in _SESSION_DIR.glob("*.json"):
+    for data in all_data:
         try:
-            data = _json.loads(path.read_text(encoding="utf-8"))
             session = ForgeSession(intake_text=data.get("intake_text", ""))
-            session.session_id          = data["session_id"]
-            session.state               = ForgeState(data.get("state", "complete"))
-            session.domain              = data.get("domain", "")
-            session.turn_count          = data.get("turn_count", 0)
-            session.created_at          = data.get("created_at", 0.0)
-            session.completed_at        = data.get("completed_at")
+            session.session_id           = data["session_id"]
+            session.state                = ForgeState(data.get("state", "complete"))
+            session.domain               = data.get("domain", "")
+            session.turn_count           = data.get("turn_count", 0)
+            session.created_at           = data.get("created_at", 0.0)
+            session.completed_at         = data.get("completed_at")
             session.recommended_theories = data.get("recommended_theories", [])
             session.discovered_theories  = data.get("discovered_theories", [])
             session.custom_theories      = data.get("custom_theories")
@@ -82,7 +77,6 @@ def _load_sessions() -> None:
             session.remaining_gaps       = data.get("remaining_gaps", [])
             if data.get("simspec"):
                 session.simspec = SimSpec.model_validate(data["simspec"])
-            # Restore research context minimally (results not needed post-session)
             ctx = session.research_context
             research = data.get("research", {})
             ctx.parameter_estimates = research.get("parameter_estimates", {})
@@ -90,11 +84,7 @@ def _load_sessions() -> None:
             _sessions[session.session_id] = session
             logger.info("Restored session %s (%s)", session.session_id, session.state)
         except Exception as exc:
-            logger.warning("Failed to restore session %s: %s", path.name, exc)
-
-
-# Load persisted sessions on startup
-_load_sessions()
+            logger.warning("Failed to restore session: %s", exc)
 
 
 def _get_session(session_id: str) -> ForgeSession:
@@ -281,9 +271,7 @@ async def delete_session(session_id: str) -> dict:
     """Delete a scoping session."""
     _get_session(session_id)  # 404 if not found
     del _sessions[session_id]
-    path = _session_path(session_id)
-    if path.exists():
-        path.unlink()
+    await _store.delete(session_id)
     return {"deleted": True}
 
 

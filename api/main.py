@@ -35,6 +35,7 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -52,10 +53,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ── Lifespan: init session store on startup ─────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await forge_router._load_sessions()
+    yield
+
+
 # ── App ────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="Crucible",
+    lifespan=lifespan,
     description="Theory-grounded multi-agent simulation platform",
     version="0.4.0",
     docs_url="/docs",
