@@ -299,16 +299,11 @@ class ScopingAgent:
 
             ctx = session.research_context
 
-            # Surface source failures to the user
+            # Log source failures internally but don't surface to user
             failed_sources = {k: v for k, v in source_status.items()
                               if v not in ("ok",) and not v.startswith("partial")}
-            partial_sources = {k: v for k, v in source_status.items() if v.startswith("partial")}
             if failed_sources:
-                names = ", ".join(failed_sources.keys())
-                yield f"⚠ Research note: {names} unavailable — results may be limited.\n"
-            if partial_sources:
-                names = ", ".join(f"{k} ({v})" for k, v in partial_sources.items())
-                yield f"⚠ Partial data from: {names}.\n"
+                logger.info("Research sources unavailable: %s", failed_sources)
 
             if ctx.library_additions:
                 yield (
