@@ -1038,29 +1038,49 @@ def _actors_table(spec: Any, session: Any = None) -> str:
             f"  description: 1-2 sentences on their position, incentives, and constraints in this scenario\n"
             f"  beliefs: 2-3 starting beliefs as key=value pairs (e.g. 'us_will_intervene=0.6, tsmc_offline_duration=0.7')\n\n"
             f"Existing data to incorporate:\n{json.dumps(existing, indent=2)}\n\n"
-            f"Return JSON array:\n"
+            f"Return ONLY a JSON array, no markdown, no explanation:\n"
             f'[{{"name": "...", "role": "...", "description": "...", "beliefs": "..."}}]'
         )
         resp = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=800,
+            max_tokens=1200,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = resp.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1].lstrip("json").strip()
-            raw = raw.rsplit("```", 1)[0].strip()
-        enriched = {item['name']: item for item in json.loads(raw)}
+        # Strip markdown code fences if present
+        if "```" in raw:
+            parts = raw.split("```")
+            for part in parts:
+                part = part.lstrip("json").strip()
+                if part.startswith("["):
+                    raw = part
+                    break
+        enriched_list = json.loads(raw)
+        # Build lookup: normalised lowercase name → item, for fuzzy matching
+        enriched_lower = {item['name'].lower(): item for item in enriched_list}
+        enriched = {item['name']: item for item in enriched_list}
     except Exception:
+        logger.exception("_actors_table LLM enrichment failed for scenario '%s'", scenario_name)
         enriched = {}
+        enriched_lower = {}
 
     rows = ["| Actor | Role | Description | Starting Beliefs |", "|-------|------|-------------|-----------------|"]
     for a in spec.actors:
-        e = enriched.get(a.name, {})
+        # Try exact match first, then case-insensitive
+        e = enriched.get(a.name) or enriched_lower.get(a.name.lower(), {})
         meta = getattr(a, 'metadata', {}) or {}
 
-        role = e.get('role') or meta.get('role') or '—'
-        desc = e.get('description') or getattr(a, 'description', '') or meta.get('description') or '—'
+        raw_role = e.get('role') or meta.get('role') or ''
+        # Filter out placeholder "other" role
+        role = raw_role if raw_role and raw_role.lower() != 'other' else ''
+        role = role or a.name  # fall back to actor name as role label
+
+        desc = (
+            e.get('description')
+            or getattr(a, 'description', '')
+            or meta.get('description')
+            or f"Key participant in the {scenario_name} scenario."
+        )
         beliefs_str = e.get('beliefs') or ''
 
         if not beliefs_str:
@@ -1073,7 +1093,7 @@ def _actors_table(spec: Any, session: Any = None) -> str:
             else:
                 belief_state = meta.get('belief_state') or {}
                 beliefs_str = "; ".join(
-                    f"{k}={v:.2f}" if isinstance(v, float) else f"{k}={v}"
+                    f"{k.split('__')[-1].replace('_', ' ')}={v:.2f}" if isinstance(v, float) else f"{k.split('__')[-1].replace('_', ' ')}={v}"
                     for k, v in list(belief_state.items())[:3]
                 ) or '—'
 

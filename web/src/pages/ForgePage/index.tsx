@@ -643,6 +643,8 @@ export function ForgePage() {
                 </button>
               </div>
             </div>
+          </div>
+
           {/* Findings document */}
           <div className="border border-border rounded-lg p-4">
             <div className="flex items-center justify-between">
