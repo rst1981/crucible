@@ -456,9 +456,9 @@ async def generate_findings(session_id: str) -> dict:
                         theory_ids=[t["theory_id"] for t in session.recommended_theories])
     _runs[run.sim_id] = run
 
-    # Run synchronously in thread (findings needs results immediately)
+    # Run sim directly (await keeps us in the same event loop)
     try:
-        await asyncio.to_thread(_execute_run_sync, run, spec_dict)
+        await _execute_run(run, spec_dict)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Simulation failed: {exc}")
 
@@ -483,16 +483,6 @@ async def generate_findings(session_id: str) -> dict:
         logger.exception("Findings generation failed for session %s", session_id)
         raise HTTPException(status_code=500, detail=str(exc))
 
-
-def _execute_run_sync(run: "SimulationRun", simspec_dict: dict) -> None:
-    """Synchronous wrapper around sim execution for use with asyncio.to_thread."""
-    import asyncio as _asyncio
-    _asyncio.run(_execute_run_async(run, simspec_dict))
-
-
-async def _execute_run_async(run: "SimulationRun", simspec_dict: dict) -> None:
-    from api.routers.simulations import _execute_run
-    await _execute_run(run, simspec_dict)
 
 
 @router.get("/intake/{session_id}/findings/download")
