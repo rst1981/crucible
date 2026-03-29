@@ -57,7 +57,10 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await forge_router._load_sessions()
+    try:
+        await forge_router._load_sessions()
+    except Exception as exc:
+        logger.warning("Session restore failed at startup (non-fatal): %s", exc)
     yield
 
 
@@ -77,7 +80,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
