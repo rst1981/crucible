@@ -213,7 +213,8 @@ export function ForgePage() {
 
   // ── Tab bar (shown once session exists and ensemble has been reached) ────────
   const TabBar = () => {
-    if (!session || !hasEnsemble) return null
+    if (!session) return null
+    const ensembleReady = hasEnsemble
     return (
       <div className="border-b border-border flex items-center px-4 gap-1 shrink-0">
         <button
@@ -227,11 +228,14 @@ export function ForgePage() {
           Interview
         </button>
         <button
-          onClick={() => setActiveTab('ensemble')}
+          onClick={() => ensembleReady && setActiveTab('ensemble')}
+          disabled={!ensembleReady}
           className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
             activeTab === 'ensemble'
               ? 'border-accent text-accent'
-              : 'border-transparent text-text-secondary hover:text-text-primary'
+              : ensembleReady
+                ? 'border-transparent text-text-secondary hover:text-text-primary'
+                : 'border-transparent text-text-secondary/30 cursor-not-allowed'
           }`}
         >
           Ensemble
@@ -239,6 +243,9 @@ export function ForgePage() {
             <span className="ml-1.5 text-text-tertiary">
               {session.recommended_theories.length}
             </span>
+          )}
+          {!ensembleReady && (
+            <span className="ml-1.5 text-text-secondary/30">·</span>
           )}
         </button>
       </div>

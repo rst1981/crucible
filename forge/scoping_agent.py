@@ -32,6 +32,7 @@ from forge.gap_detector import detect_gaps, _merge_gaps
 from forge.researchers.fred import FredAdapter
 from forge.researchers.news import NewsAdapter
 from forge.researchers.openalex import OpenAlexAdapter
+from forge.researchers.perplexity import PerplexityAdapter
 from forge.researchers.semantic_scholar import SemanticScholarAdapter
 from forge.researchers.ssrn import SsrnAdapter
 from forge.researchers.worldbank import WorldBankAdapter
@@ -1185,7 +1186,7 @@ Return ONLY valid JSON."""
         try:
             resp = self._client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=256,
+                max_tokens=600,
                 messages=[{"role": "user", "content": prompt}],
             )
             raw = resp.content[0].text.strip()
@@ -1207,16 +1208,21 @@ Return ONLY valid JSON."""
                 len(session.data_gaps), len(session.proprietary_gaps)
             )
         except Exception as exc:
-            logger.warning("_identify_data_gaps failed: %s", exc)
+            import traceback
+            logger.error("_identify_data_gaps failed: %s\n%s", exc, traceback.format_exc())
 
     # ── Gap research loop ──────────────────────────────────────────────────
 
     async def run_gap_research(self, session: ForgeSession) -> AsyncIterator[str]:
         """
-        Targeted research pass to close data gaps identified in the assessment.
+        Perplexity Sonar-powered gap research agent.
 
-        Yields status text chunks as it runs. On completion, reruns theory mapping
-        and sets session.gap_research_complete = True.
+        For each resolvable data gap:
+          1. Sonnet formulates a precise quantitative research question
+          2. Perplexity Sonar answers with cited prose (full web index)
+          3. Sonnet extracts: grounded?, value_note, param_key/value
+          4. If not grounded and Perplexity key is absent, falls back to
+             OpenAlex + FRED parallel fetch with haiku evaluation.
         """
         yield "Launching targeted gap research...\n"
         session.gap_research_running = True
@@ -1227,150 +1233,271 @@ Return ONLY valid JSON."""
             yield "No data gaps to research.\n"
             return
 
-        # Batch all gaps into two query sets: academic (OpenAlex) and FRED series IDs
-        gap_list_text = "\n".join(f"{i+1}. {g}" for i, g in enumerate(gaps))
-        query_prompt = (
-            f"For each data gap, produce:\n"
-            f"  - An academic search query (3-5 keywords for OpenAlex)\n"
-            f"  - A FRED series ID if one exists (e.g. DCOILWTICO, WPS012, CPIAUCSL), or null\n\n"
-            f"Data gaps:\n{gap_list_text}\n\n"
-            f"Return ONLY valid JSON:\n"
-            f"{{\"queries\": [\"query1\", ...], \"fred_ids\": [\"SERIES_ID_OR_NULL\", ...]}}\n"
-            f"Same order as gaps. Use null (not a string) if no FRED series applies."
-        )
-        try:
-            resp = self._client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=256,
-                messages=[{"role": "user", "content": query_prompt}],
-            )
-            raw = resp.content[0].text.strip()
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            parsed = json.loads(raw)
-            queries = parsed.get("queries", [])
-            fred_ids = parsed.get("fred_ids", [])
-            if not isinstance(queries, list) or not queries:
-                queries = gaps[:3]
-            if not isinstance(fred_ids, list):
-                fred_ids = []
-        except Exception as exc:
-            logger.warning("run_gap_research: query distillation failed: %s", exc)
-            queries = gaps[:3]
-            fred_ids = []
-
-        yield f"Researching {len(gaps)} data gaps in parallel...\n"
-
         ctx = session.research_context
-        new_results = []
+        spec = session.simspec
+        scenario_ctx = (
+            f"{spec.name} | domain: {spec.domain} | "
+            f"outcome: {(spec.metadata or {}).get('outcome_focus', '')}"
+            if spec else "unknown scenario"
+        )
 
-        async with httpx.AsyncClient(timeout=25.0) as http:
-            oa   = OpenAlexAdapter(http)
-            fred = FredAdapter(http)
-            news = NewsAdapter(http)
+        closed_gaps: list[str] = []
+        all_param_updates: dict[str, float] = {}
 
-            fetch_tasks = []
-            for q in queries:
-                fetch_tasks.append(oa.fetch(q, max_results=3))
-                fetch_tasks.append(news.fetch(q, max_results=2, category="economics"))
-            # FRED: only fetch series IDs that haiku identified as valid
-            for sid in fred_ids:
-                if sid and isinstance(sid, str) and sid.upper() not in ("NULL", "NONE", "N/A"):
-                    fetch_tasks.append(fred.fetch(sid.upper(), max_results=1))
+        async with httpx.AsyncClient(timeout=35.0) as http:
+            perplexity = PerplexityAdapter(http)
+            oa         = OpenAlexAdapter(http)
+            fred       = FredAdapter(http)
 
-            raw_results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
-
-        for result in raw_results:
-            if isinstance(result, Exception):
-                continue
-            if isinstance(result, list):
-                ok = [r for r in result if r.ok]
-                new_results.extend(ok)
-
-        ctx.gap_results.extend(new_results)
-        yield f"Retrieved {len(new_results)} new research results.\n"
-
-        if new_results:
-            # Ask haiku which gaps are now closed and whether any params should update
-            snippets = "\n\n".join(
-                r.to_context_snippet() for r in new_results[:12]
-            )[:4000]
-            gap_list_json = json.dumps(gaps)
-            close_prompt = f"""You are a simulation analyst reviewing targeted research results.
-
-Data gaps to close:
-{gap_list_text}
-
-New research findings:
-{snippets}
-
-Based on the research, determine which gaps are now sufficiently grounded.
-Also extract any parameter updates (normalized 0-1 values).
-
-Return ONLY valid JSON:
-{{
-  "closed": ["exact gap text from the list that is now grounded", ...],
-  "updates": {{"param_key": 0.75, ...}}
-}}
-
-Only include a gap in "closed" if the research directly addresses it.
-Return empty lists/objects if nothing qualifies."""
-
-            try:
-                resp2 = self._client.messages.create(
-                    model="claude-haiku-4-5-20251001",
-                    max_tokens=512,
-                    messages=[{"role": "user", "content": close_prompt}],
+            for idx, gap in enumerate(gaps):
+                yield f"[{idx + 1}/{len(gaps)}] {gap[:70]}\n"
+                grounded, value_note, updates = await self._research_gap_perplexity(
+                    gap, scenario_ctx, perplexity, oa, fred
                 )
-                raw2 = resp2.content[0].text.strip()
-                if raw2.startswith("```"):
-                    raw2 = raw2.split("```")[1]
-                    if raw2.startswith("json"):
-                        raw2 = raw2[4:]
-                close_data = json.loads(raw2)
-                closed_gaps = close_data.get("closed", [])
-                param_updates = close_data.get("updates", {}) or {}
+                if grounded:
+                    closed_gaps.append(gap)
+                    suffix = f": {value_note}" if value_note else ""
+                    yield f"  ✓ Grounded{suffix}\n"
+                    all_param_updates.update(updates)
+                else:
+                    yield f"  ○ Insufficient public data found\n"
 
-                # Update parameter estimates
-                for k, v in param_updates.items():
+        # Apply parameter updates
+        for k, v in all_param_updates.items():
+            try:
+                ctx.parameter_estimates[k] = float(max(0.0, min(1.0, float(v))))
+            except (ValueError, TypeError):
+                pass
+        if session.simspec and all_param_updates:
+            env = session.simspec.initial_environment or {}
+            for k, v in all_param_updates.items():
+                if k in env:
                     try:
-                        ctx.parameter_estimates[k] = float(max(0.0, min(1.0, float(v))))
+                        env[k] = float(max(0.0, min(1.0, float(v))))
                     except (ValueError, TypeError):
                         pass
 
-                # Update simspec initial_environment if keys exist
-                if session.simspec and param_updates:
-                    env = session.simspec.initial_environment or {}
-                    for k, v in param_updates.items():
-                        if k in env:
-                            try:
-                                env[k] = float(max(0.0, min(1.0, float(v))))
-                            except (ValueError, TypeError):
-                                pass
-
-            except Exception as exc:
-                logger.warning("run_gap_research: gap close analysis failed: %s", exc)
-                closed_gaps = []
-
-            session.closed_gaps = [g for g in closed_gaps if g in gaps]
-        else:
-            session.closed_gaps = []
-
-        session.remaining_gaps = [g for g in gaps if g not in session.closed_gaps]
-
-        yield (
-            f"Closed {len(session.closed_gaps)}/{len(gaps)} gaps. "
-            f"Updating ensemble...\n"
-        )
-
-        # Rerun theory mapping to incorporate new research
-        theory_result = await self._run_theory_mapping(session)
-
+        session.closed_gaps = closed_gaps
+        session.remaining_gaps = [g for g in gaps if g not in closed_gaps]
         session.gap_research_running = False
         session.gap_research_complete = True
+
+        yield f"\nClosed {len(closed_gaps)}/{len(gaps)} gaps. Updating ensemble...\n"
+        theory_result = await self._run_theory_mapping(session)
         yield theory_result
+
+    async def _research_gap_perplexity(
+        self,
+        gap: str,
+        scenario_ctx: str,
+        perplexity: PerplexityAdapter,
+        oa: OpenAlexAdapter,
+        fred: FredAdapter,
+        max_rounds: int = 2,
+    ) -> tuple[bool, str, dict]:
+        """
+        Research one data gap using Perplexity Sonar as the primary source.
+
+        Flow:
+          1. Sonnet formulates a precise quantitative research question for the gap
+          2. Perplexity Sonar answers with cited prose
+          3. Sonnet evaluates the answer: grounded?, extracts value_note + param hint
+          4. If Perplexity unavailable, falls back to OpenAlex + FRED
+
+        Returns (grounded, value_note, param_updates).
+        """
+        import os as _os
+
+        has_perplexity = bool(_os.environ.get("PERPLEXITY_API_KEY", ""))
+
+        # ── Step 1: Sonnet formulates the research question ────────────────────
+        question_prompt = (
+            f"Scenario context: {scenario_ctx}\n\n"
+            f"Data gap to fill: {gap}\n\n"
+            f"Write a single precise research question that would retrieve "
+            f"quantitative data to fill this gap. The question should:\n"
+            f"- Ask for specific numbers, percentages, rates, or ranges\n"
+            f"- Reference the scenario context (industry, region, timeframe)\n"
+            f"- Be answerable from public economic, policy, or industry data\n\n"
+            f"Return ONLY the question as plain text, no JSON."
+        )
+        try:
+            resp = self._client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=120,
+                messages=[{"role": "user", "content": question_prompt}],
+            )
+            research_question = resp.content[0].text.strip()
+        except Exception:
+            research_question = gap  # fallback to raw gap text
+
+        # ── Step 2: Fetch answer ───────────────────────────────────────────────
+        raw_answer = ""
+        source_label = ""
+
+        if has_perplexity:
+            results = await perplexity.fetch(research_question, max_results=1)
+            if results and results[0].ok:
+                raw_answer = results[0].summary
+                source_label = "Perplexity Sonar"
+
+        if not raw_answer:
+            # Fallback: OpenAlex + FRED in parallel
+            import re as _re
+            fred_prompt = (
+                f"For this data gap: {gap}\n"
+                f"Name ONE FRED series ID (e.g. DCOILWTICO) or null.\n"
+                f"Return ONLY JSON: {{\"fred\": \"SERIES_OR_NULL\"}}"
+            )
+            try:
+                fr = self._client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=50,
+                    messages=[{"role": "user", "content": fred_prompt}],
+                )
+                fred_raw = fr.content[0].text.strip()
+                if fred_raw.startswith("```"):
+                    fred_raw = fred_raw.split("```")[1].lstrip("json")
+                fred_id = json.loads(fred_raw).get("fred", None)
+                if fred_id:
+                    fred_id = _re.split(r"[|,\s]+", str(fred_id).strip())[0].upper()
+                    if fred_id in ("NULL", "NONE", "N/A", ""):
+                        fred_id = None
+            except Exception:
+                fred_id = None
+
+            tasks: list = [oa.fetch(gap[:80], max_results=3)]
+            if fred_id:
+                tasks.append(fred.fetch(fred_id, max_results=1))
+            fallback_raw = await asyncio.gather(*tasks, return_exceptions=True)
+            fallback_results = []
+            for r in fallback_raw:
+                if isinstance(r, list):
+                    fallback_results.extend(x for x in r if x.ok)
+
+            if fallback_results:
+                raw_answer = "\n\n".join(
+                    r.to_context_snippet() for r in fallback_results[:4]
+                )[:2000]
+                source_label = "OpenAlex/FRED"
+
+        if not raw_answer:
+            return False, "", {}
+
+        # ── Step 3: Sonnet evaluates and extracts ──────────────────────────────
+        eval_prompt = (
+            f"Data gap: {gap}\n"
+            f"Scenario: {scenario_ctx}\n\n"
+            f"Research answer ({source_label}):\n{raw_answer}\n\n"
+            f"Does this answer provide a quantitative calibration anchor?\n"
+            f"  grounded = contains a specific %, rate, price, elasticity, or range\n"
+            f"  insufficient = only qualitative, no usable numbers\n\n"
+            f"Return ONLY JSON:\n"
+            f'{{"grounded": true/false, '
+            f'"value_note": "e.g. freight rates +40% during 1984 tanker war", '
+            f'"param_key": "snake_case_sim_env_key_or_null", '
+            f'"param_value_0_to_1": 0.4}}'
+        )
+        try:
+            resp2 = self._client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=200,
+                messages=[{"role": "user", "content": eval_prompt}],
+            )
+            raw2 = resp2.content[0].text.strip()
+            if raw2.startswith("```"):
+                raw2 = raw2.split("```")[1].lstrip("json")
+            ev = json.loads(raw2)
+                if ev.get("grounded"):
+                value_note = ev.get("value_note") or ""
+                updates: dict[str, float] = {}
+                pk = ev.get("param_key")
+                pv = ev.get("param_value_0_to_1")
+                if pk and pv is not None and str(pk).lower() not in ("null", "none"):
+                    try:
+                        updates[str(pk)] = float(max(0.0, min(1.0, float(pv))))
+                    except (ValueError, TypeError):
+                        pass
+                return True, value_note, updates
+        except Exception:
+            pass
+
+        # ── Round 2: reframe using proxy angle ────────────────────────────────
+        if not has_perplexity:
+            return False, "", {}
+
+        reframe_prompt = (
+            f"The following research question did not yield quantitative data:\n"
+            f"Original question: {research_question}\n\n"
+            f"Data gap: {gap}\n"
+            f"Scenario: {scenario_ctx}\n\n"
+            f"Reframe this as a PROXY question — ask for related or analogous data "
+            f"that could serve as a calibration anchor even if it doesn't directly "
+            f"answer the original gap. Examples:\n"
+            f"  - If direct shipping rate data is paywalled, ask about Baltic Dry Index "
+            f"    or historical tanker war freight impacts\n"
+            f"  - If franchise-specific data is unavailable, ask about food service "
+            f"    industry margin compression during oil price shocks\n"
+            f"Write ONE reframed question as plain text only."
+        )
+        try:
+            resp_reframe = self._client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=120,
+                messages=[{"role": "user", "content": reframe_prompt}],
+            )
+            proxy_question = resp_reframe.content[0].text.strip()
+        except Exception:
+            return False, "", {}
+
+        # Fetch proxy answer from Perplexity
+        proxy_results = await perplexity.fetch(proxy_question, max_results=1)
+        if not proxy_results or not proxy_results[0].ok:
+            return False, "", {}
+
+        proxy_answer = proxy_results[0].summary
+
+        # Re-evaluate with proxy answer
+        proxy_eval_prompt = (
+            f"Data gap: {gap}\n"
+            f"Scenario: {scenario_ctx}\n\n"
+            f"We couldn't find direct data, so we searched for a proxy:\n"
+            f"Proxy question: {proxy_question}\n"
+            f"Proxy answer:\n{proxy_answer}\n\n"
+            f"Can this proxy data serve as a calibration anchor for the original gap?\n"
+            f"  grounded = yes, contains usable numbers that could substitute\n"
+            f"  insufficient = proxy is too distant or still qualitative only\n\n"
+            f"Return ONLY JSON:\n"
+            f'{{"grounded": true/false, '
+            f'"value_note": "proxy: e.g. Baltic Dry Index fell 60% during Gulf War", '
+            f'"param_key": "snake_case_sim_env_key_or_null", '
+            f'"param_value_0_to_1": 0.4}}'
+        )
+        try:
+            resp3 = self._client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=200,
+                messages=[{"role": "user", "content": proxy_eval_prompt}],
+            )
+            raw3 = resp3.content[0].text.strip()
+            if raw3.startswith("```"):
+                raw3 = raw3.split("```")[1].lstrip("json")
+            ev3 = json.loads(raw3)
+            if ev3.get("grounded"):
+                value_note = ev3.get("value_note") or ""
+                updates: dict[str, float] = {}
+                pk = ev3.get("param_key")
+                pv = ev3.get("param_value_0_to_1")
+                if pk and pv is not None and str(pk).lower() not in ("null", "none"):
+                    try:
+                        updates[str(pk)] = float(max(0.0, min(1.0, float(pv))))
+                    except (ValueError, TypeError):
+                        pass
+                return True, value_note, updates
+        except Exception:
+            pass
+
+        return False, "", {}
 
     async def _finalize_ensemble(self, session: ForgeSession) -> str:
         """

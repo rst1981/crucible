@@ -73,7 +73,7 @@ class ActorSpec(BaseModel):
     name:        str
     description: str  = ""
     # fully-qualified agent class, e.g. "scenarios.hormuz.agents.IranAgent"
-    agent_class: str  = "core.agents.base.BDIAgent"
+    agent_class: str  = "core.agents.base.DefaultBDIAgent"
     beliefs:      list[BeliefSpec]      = Field(default_factory=list)
     desires:      list[DesireSpec]      = Field(default_factory=list)
     capabilities: list[CapabilitySpec]  = Field(default_factory=list)
