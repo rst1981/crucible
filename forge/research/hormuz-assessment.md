@@ -149,7 +149,7 @@ Richardson (priority 0) drives the military balance that Fearon reads as its win
 
 **Bull case (~20%):** US makes early concessions on sanctions architecture (months 3–5); Iran domestic pressure triggers pragmatic leadership shift. Rapid back-channel agreement by month 6–8. Oil never exceeds $100/bbl; returns to $72–78 by month 12. Minimal GDP impact (−0.5 to −1.0pp). Richardson stabilises without runaway escalation.
 
-**Bear case (~25%):** Negotiations collapse entirely after rejected peace plan. Iran escalates to full blockade enforcement months 5–7; US retaliatory strikes month 8–10. Prolonged closure through month 18+. Oil sustains $110–125/bbl range; global recession threshold crossed (GDP −3pp+). Iran domestic instability creates regime change risk (political stability deteriorates below −2.0). SIR economic contagion infects >35% of importer economies.
+**Bear case (~25%):** Negotiations collapse entirely after rejected peace plan. Iran escalates to full blockade enforcement months 5–7; US retaliatory strikes month 8–10. Prolonged closure through month 18+. Oil sustains $110–125/bbl rang\contagion infects >35% of importer economies.
 
 ---
 

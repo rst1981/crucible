@@ -6,8 +6,12 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/forge/intake': 'http://localhost:8000',
-      '/forge/generate-scenario': 'http://localhost:8000',
+      '/forge': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        timeout: 300000,
+        proxyTimeout: 300000,
+      },
       '/simulations': 'http://localhost:8000',
       '/api': 'http://localhost:8000',
       '/health': 'http://localhost:8000',
