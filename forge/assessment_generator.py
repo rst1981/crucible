@@ -207,22 +207,35 @@ def _build_markdown(
     n = len(recs)
 
     # Prose via haiku (single call returns dict with all keys)
-    exec_summary, data_gaps = _generate_prose(session)
+    exec_summary, _data_gaps_haiku = _generate_prose(session)
+
+    # Use the scoping agent's gaps if already identified — haiku may drift on count
+    if session.data_gaps or session.proprietary_gaps:
+        all_gaps = (session.proprietary_gaps or []) + (session.data_gaps or [])
+        closed = set(session.closed_gaps or [])
+        data_gaps = "\n".join(
+            f"- {'✓' if g in closed else '○'} {g}" for g in session.data_gaps or []
+        )
+        if session.proprietary_gaps:
+            data_gaps = "\n".join(f"- ⊘ {g}" for g in session.proprietary_gaps) + "\n" + data_gaps
+    else:
+        data_gaps = _data_gaps_haiku
 
     # Sections
-    actors_md       = _actors_table(spec)
-    actor_data_md   = _actor_data_section(session, {})
-    env_md          = _env_table(spec)
-    theories_md     = _theories_table(recs)
-    calib_md        = _calibration_table(ctx)
-    calib_v2_md     = _calibration_table_v2(ctx)
-    sources_md      = _sources_section_v2(ctx)
-    cascade_ascii   = _module_cascade_ascii(recs)
-    signals_md      = _forward_signals(session)
-    library_gaps    = _discovered_theories_section(ctx, recs)
-    simspec_stub    = _simspec_stub(session)
-    gap_section_raw = _gap_research_section(session)
-    gap_section     = f"\n{gap_section_raw}\n" if gap_section_raw else ""
+    actors_md        = _actors_table(spec, session)
+    actor_data_md    = _actor_data_section(session, {})
+    env_md           = _env_table(spec)
+    theories_md      = _theories_table(recs)
+    calib_md         = _calibration_table(ctx)
+    calib_v2_md      = _calibration_table_v2(ctx)
+    sources_md       = _sources_section_v2(ctx)
+    cascade_ascii    = _module_cascade_ascii(recs)
+    signals_md       = _forward_signals(session)
+    library_gaps     = _discovered_theories_section(ctx, recs)
+    simspec_stub     = _simspec_stub(session)
+    gap_section_raw  = _gap_research_section(session)
+    gap_section      = f"\n{gap_section_raw}\n" if gap_section_raw else ""
+    comparative_md   = _comparative_analysis(session, recs)
 
     # Chart embeds
     chart_embed = ""
@@ -295,15 +308,9 @@ def _build_markdown(
 
 ---
 
-## Actor Data
+## Comparative Analysis
 
-{actor_data_md}
-
----
-
-## Macro & Sector Context
-
-{macro_context_bullets}
+{comparative_md}
 
 ---
 
@@ -319,6 +326,12 @@ def _build_markdown(
 ### Initial Conditions
 
 {env_md}
+
+---
+
+## Macro & Sector Context
+
+{macro_context_bullets}
 
 ---
 
@@ -461,16 +474,17 @@ Write in a direct, analytical consulting voice. No fluff. Return ONLY valid JSON
         exec_summary = data.get("exec_summary", "")
 
         # data_gaps: handle list or string
+        # Never overwrite session.data_gaps if already populated by the scoping agent
         data_gaps_raw = data.get("data_gaps", "")
         if isinstance(data_gaps_raw, list):
             data_gaps = "\n".join(
                 item if str(item).startswith("-") else f"- {item}"
                 for item in data_gaps_raw
             )
-            session.data_gaps = [str(item).lstrip("- ").strip() for item in data_gaps_raw]
+            if not session.data_gaps:
+                session.data_gaps = [str(item).lstrip("- ").strip() for item in data_gaps_raw]
         else:
             data_gaps = data_gaps_raw
-            session.data_gaps = []
 
         # Stash full prose data on session for use in richer sections
         try:
@@ -925,22 +939,145 @@ Return ONLY the markdown table, no other text. Start with the header row."""
         return "| Signal | Direction | Confidence | Module |\n|--------|-----------|------------|--------|\n| Insufficient data for signal extraction | → | Low | — |"
 
 
+# ── Comparative analysis ────────────────────────────────────────────────────
+
+def _comparative_analysis(session: "ForgeSession", recs: list[dict]) -> str:
+    """
+    Generate a comparative analysis of the recommended vs custom/discovered
+    theory ensembles, describing what each emphasises and how outcomes differ.
+    Falls back to a single-ensemble summary if only one option exists.
+    """
+    spec = session.simspec
+    recommended = session.recommended_theories or []
+    discovered  = session.discovered_theories or []
+    custom      = session.custom_theories or []
+
+    rec_names  = ", ".join(r["display_name"] for r in recommended) or "none"
+    disc_names = ", ".join(r["display_name"] for r in discovered) or "none"
+    cust_names = ", ".join(t.get("theory_id", "") for t in custom) or "none"
+
+    has_second = bool(discovered or custom)
+
+    outcome = (spec.metadata or {}).get("outcome_focus", "") if spec else ""
+    scenario_name = spec.name if spec else "scenario"
+
+    try:
+        client = Anthropic()
+        if has_second:
+            prompt = (
+                f"Scenario: {scenario_name}\nOutcome focus: {outcome}\n\n"
+                f"Two simulation ensembles are available:\n\n"
+                f"**Ensemble A — Library (recommended):** {rec_names}\n"
+                f"**Ensemble B — Research-discovered:** {disc_names or cust_names}\n\n"
+                f"Write a comparative analysis (3-4 paragraphs) covering:\n"
+                f"1. What each ensemble emphasises and why it was selected\n"
+                f"2. Where their predicted dynamics will likely diverge\n"
+                f"3. Which ensemble is better suited to which analytic question\n"
+                f"4. A clear recommendation on which to launch first and why\n\n"
+                f"Write as a senior analyst briefing an executive. Be specific and direct."
+            )
+        else:
+            prompt = (
+                f"Scenario: {scenario_name}\nOutcome focus: {outcome}\n\n"
+                f"Theory ensemble: {rec_names}\n\n"
+                f"Write a 2-paragraph analysis covering:\n"
+                f"1. Why this ensemble was selected and what dynamics it captures\n"
+                f"2. Key assumptions embedded in the model and where it may be most/least reliable\n\n"
+                f"Write as a senior analyst briefing an executive."
+            )
+        resp = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.content[0].text.strip()
+    except Exception:
+        if has_second:
+            return (
+                f"**Ensemble A (Library):** {rec_names}\n\n"
+                f"**Ensemble B (Discovered):** {disc_names or cust_names}\n\n"
+                f"*Comparative analysis unavailable — run both ensembles to compare outcomes.*"
+            )
+        return f"**Ensemble:** {rec_names}\n\n*Analysis unavailable.*"
+
+
 # ── Table builders (kept for backward compatibility and direct use) ──────────
 
-def _actors_table(spec: Any) -> str:
+def _actors_table(spec: Any, session: Any = None) -> str:
+    """
+    Build actor table. Makes one LLM call to generate rich role/description/beliefs
+    for each actor using scenario context. Falls back to spec data if LLM fails.
+    """
     if not spec or not spec.actors:
         return "*No actors defined.*"
-    rows = ["| Actor | Role | Description | Starting Beliefs |", "|-------|------|-------------|-----------------|"]
+
+    # Build context for the LLM
+    scenario_name = getattr(spec, 'name', 'unknown scenario')
+    scenario_desc = getattr(spec, 'description', '')
+    outcome = (getattr(spec, 'metadata', {}) or {}).get('outcome_focus', '')
+    actor_names = [a.name for a in spec.actors]
+
+    # Collect any existing descriptions from spec
+    existing = {}
     for a in spec.actors:
         meta = getattr(a, 'metadata', {}) or {}
-        role = meta.get('role', '—')
-        desc = meta.get('description', '—') or '—'
-        belief_state = meta.get('belief_state') or {}
-        beliefs = "; ".join(
-            f"{k}={v:.2f}" if isinstance(v, float) else f"{k}={v}"
-            for k, v in list(belief_state.items())[:3]
-        ) or '—'
-        rows.append(f"| {a.name} | {role} | {desc} | {beliefs} |")
+        d = getattr(a, 'description', '') or meta.get('description', '') or ''
+        r = meta.get('role', '') or ''
+        if d or r:
+            existing[a.name] = {'role': r, 'description': d}
+
+    try:
+        client = Anthropic()
+        prompt = (
+            f"Scenario: {scenario_name}\n"
+            f"{scenario_desc}\n"
+            f"Outcome focus: {outcome}\n\n"
+            f"Actors: {', '.join(actor_names)}\n\n"
+            f"For each actor, write:\n"
+            f"  role: 4-6 word phrase capturing their function (e.g. 'Blockade initiator and naval power')\n"
+            f"  description: 1-2 sentences on their position, incentives, and constraints in this scenario\n"
+            f"  beliefs: 2-3 starting beliefs as key=value pairs (e.g. 'us_will_intervene=0.6, tsmc_offline_duration=0.7')\n\n"
+            f"Existing data to incorporate:\n{json.dumps(existing, indent=2)}\n\n"
+            f"Return JSON array:\n"
+            f'[{{"name": "...", "role": "...", "description": "...", "beliefs": "..."}}]'
+        )
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=800,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = resp.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1].lstrip("json").strip()
+            raw = raw.rsplit("```", 1)[0].strip()
+        enriched = {item['name']: item for item in json.loads(raw)}
+    except Exception:
+        enriched = {}
+
+    rows = ["| Actor | Role | Description | Starting Beliefs |", "|-------|------|-------------|-----------------|"]
+    for a in spec.actors:
+        e = enriched.get(a.name, {})
+        meta = getattr(a, 'metadata', {}) or {}
+
+        role = e.get('role') or meta.get('role') or '—'
+        desc = e.get('description') or getattr(a, 'description', '') or meta.get('description') or '—'
+        beliefs_str = e.get('beliefs') or ''
+
+        if not beliefs_str:
+            actor_beliefs = getattr(a, 'beliefs', []) or []
+            if actor_beliefs:
+                beliefs_str = "; ".join(
+                    f"{b.name}={b.alpha/(b.alpha+b.beta):.2f}" if hasattr(b, 'alpha') else b.name
+                    for b in actor_beliefs[:3]
+                )
+            else:
+                belief_state = meta.get('belief_state') or {}
+                beliefs_str = "; ".join(
+                    f"{k}={v:.2f}" if isinstance(v, float) else f"{k}={v}"
+                    for k, v in list(belief_state.items())[:3]
+                ) or '—'
+
+        rows.append(f"| {a.name} | {role} | {desc} | {beliefs_str} |")
     return "\n".join(rows)
 
 

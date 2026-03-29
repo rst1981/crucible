@@ -14,6 +14,7 @@ export function ForgePage() {
   const [input, setInput] = useState('')
   const [intakeText, setIntakeText] = useState('')
   const [starting, setStarting] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [launching, setLaunching] = useState(false)
   const [generatingAssessment, setGeneratingAssessment] = useState(false)
   const [assessmentDone, setAssessmentDone] = useState(false)
@@ -182,6 +183,19 @@ export function ForgePage() {
   const hasEnsemble = inEnsembleReview || (session?.recommended_theories?.length ?? 0) > 0
   const hasCustom = session?.custom_theories != null && session.custom_theories.length > 0
 
+  const handleGenerate = async () => {
+    setGenerating(true)
+    try {
+      const res = await fetch('/forge/generate-scenario', { method: 'POST' })
+      const data = await res.json()
+      if (data.scenario) setIntakeText(data.scenario)
+    } catch (e) {
+      console.error('Generate failed', e)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   // ── Pre-session intake form ────────────────────────────────────────────────
   if (!session) {
     return (
@@ -192,13 +206,24 @@ export function ForgePage() {
             Describe a scenario in plain language. The scoping agent will research relevant theory,
             pull calibration data, and interview you to build a simulation specification.
           </p>
+
+          {/* Freeform input */}
           <textarea
-            className="input min-h-[120px] resize-none mb-3"
+            className="input min-h-[120px] resize-none mb-2"
             placeholder="Describe your scenario..."
             value={intakeText}
             onChange={(e) => setIntakeText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && e.metaKey) handleStart() }}
           />
+          <div className="flex justify-end mb-3">
+            <button
+              className="text-xs text-text-secondary hover:text-text-primary transition-colors"
+              onClick={handleGenerate}
+              disabled={generating}
+            >
+              {generating ? 'Generating…' : intakeText ? '↺ Regenerate scenario' : '✦ Generate scenario'}
+            </button>
+          </div>
           <button
             className="btn-primary w-full"
             onClick={handleStart}
@@ -275,7 +300,7 @@ export function ForgePage() {
     }
 
     const handleGapResearch = () => {
-      if (!session || gapResearching || session.gap_research_complete) return
+      if (!session || gapResearching) return
       setGapResearching(true)
       setGapResearchLog('')
       streamGapResearch(
@@ -373,9 +398,9 @@ export function ForgePage() {
                   <button
                     className="btn-primary text-xs py-1 px-3"
                     onClick={handleGapResearch}
-                    disabled={gapResearching || session?.gap_research_complete}
+                    disabled={gapResearching}
                   >
-                    {gapResearching ? 'Researching…' : session?.gap_research_complete ? 'Research complete' : 'Research gaps'}
+                    {gapResearching ? 'Researching…' : session?.gap_research_complete ? 'Re-run research' : 'Research gaps'}
                   </button>
                 </div>
               )}
@@ -582,9 +607,9 @@ export function ForgePage() {
               <button
                 className="btn-primary text-xs py-1 px-3"
                 onClick={handleGenerateAssessment}
-                disabled={generatingAssessment || !!(assessmentDone || session.assessment_path)}
+                disabled={generatingAssessment}
               >
-                {generatingAssessment ? 'Generating…' : assessmentDone || session.assessment_path ? 'Generated' : 'Generate'}
+                {generatingAssessment ? 'Generating…' : assessmentDone || session.assessment_path ? 'Regenerate' : 'Generate'}
               </button>
             </div>
           </div>
@@ -602,7 +627,23 @@ export function ForgePage() {
               <p className="text-text-secondary font-medium">{session.simspec?.name || '—'}</p>
               <div className="space-y-1 text-text-secondary">
                 <p>Domain: <span className="text-text-primary">{session.simspec?.domain || '—'}</span></p>
-                <p>Actors: <span className="text-text-primary">{session.simspec?.actors?.length ?? 0}</span></p>
+                <div>
+                  <p className="mb-1">Actors: <span className="text-text-primary">{session.simspec?.actors?.length ?? 0}</span></p>
+                  {(session.simspec?.actors?.length ?? 0) > 0 && (
+                    <ul className="space-y-1 mt-1">
+                      {session.simspec!.actors.map(a => {
+                        const role = a.metadata?.role || a.description || ''
+                        const shortRole = role.split(';')[0].split('.')[0].trim().slice(0, 55)
+                        return (
+                          <li key={a.actor_id} className="text-text-secondary leading-snug">
+                            <span className="text-text-primary">{a.name}</span>
+                            {shortRole && <span> — {shortRole}</span>}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
                 <p>Horizon: <span className="text-text-primary">{(session.simspec?.timeframe as any)?.total_ticks ?? 0} {(session.simspec?.timeframe as any)?.tick_unit ?? 'months'}</span></p>
               </div>
             </div>

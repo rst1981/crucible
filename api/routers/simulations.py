@@ -83,6 +83,9 @@ async def _execute_run(run: SimulationRun, simspec_dict: dict) -> None:
     run.status = "running"
     try:
         spec = SimSpec.model_validate(simspec_dict)
+        # Auto-generate metrics from env keys if none were defined
+        from forge.scoping_agent import _ensure_metrics_consistent
+        _ensure_metrics_consistent(spec)
         runner = SimRunner(spec, rng_seed=42)
         runner.setup()
         await asyncio.get_event_loop().run_in_executor(None, runner.run)
@@ -97,7 +100,7 @@ async def _execute_run(run: SimulationRun, simspec_dict: dict) -> None:
         run.results = {
             "theory_ids":     run.theory_ids,
             "ensemble_type":  run.ensemble_type,
-            "ticks":          len(set(r.tick for r in runner.metric_history)),
+            "ticks":          runner.ticks_completed,
             "metric_series":  metric_series,
             "metric_names":   {
                 r.metric_id: r.name

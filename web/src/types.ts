@@ -67,11 +67,18 @@ export interface PendingTheory {
   file_path: string | null
 }
 
+export interface ActorSpec {
+  actor_id: string
+  name: string
+  description: string
+  metadata: { role?: string; description?: string; [key: string]: unknown }
+}
+
 export interface SimSpec {
   scenario_id: string
   name: string
   domain: string
-  actors: unknown[]
+  actors: ActorSpec[]
   theories: { theory_id: string; priority: number; parameters: Record<string, unknown> }[]
   metrics: unknown[]
   [key: string]: unknown

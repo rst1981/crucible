@@ -290,7 +290,7 @@ class ScopingAgent:
             session.domain = skeleton.domain
             session.state = ForgeState.PARALLEL_RESEARCH
 
-            yield "Running parallel research (Semantic Scholar, OpenAlex, arXiv, FRED, World Bank, news)...\n"
+            yield "Running parallel research (Perplexity, OpenAlex, FRED, World Bank, news)...\n"
             source_status = await self._run_research(session)
             self._spec_builder.apply_research_hints(session.simspec, session.research_context)
             session.gaps = detect_gaps(session.simspec)
@@ -368,6 +368,28 @@ class ScopingAgent:
             reply = chunk
         return reply
 
+    async def _suggest_fred_series(self, intake_text: str, domain: str) -> list[str]:
+        """Ask Haiku to suggest 2-3 relevant FRED series IDs for this scenario."""
+        try:
+            resp = self._client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=80,
+                messages=[{"role": "user", "content": (
+                    f"Scenario: {intake_text[:200]}\nDomain: {domain}\n\n"
+                    f"Name 2-3 FRED series IDs most relevant to this scenario.\n"
+                    f"Examples: DCOILWTICO, CPIAUCSL, UNRATE, MORTGAGE30US, SP500, BAMLH0A0HYM2\n"
+                    f"Return ONLY a JSON array of series IDs: [\"ID1\", \"ID2\"]"
+                )}],
+            )
+            raw = resp.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1].lstrip("json").strip()
+            import re as _re
+            ids = json.loads(raw)
+            return [str(i).strip().upper() for i in ids if i][:3]
+        except Exception:
+            return []
+
     async def _run_research(self, session: ForgeSession) -> dict[str, str]:
         """
         Fan-out research across all adapters in parallel.
@@ -382,25 +404,41 @@ class ScopingAgent:
         academic_query = await self._build_academic_query(session.intake_text, spec.domain)
         logger.info("Academic query: %r", academic_query)
 
-        async with httpx.AsyncClient(timeout=25.0) as http:
-            oa   = OpenAlexAdapter(http)
-            fred = FredAdapter(http)
-            wb   = WorldBankAdapter(http)
-            news = NewsAdapter(http)
+        # Build a Perplexity research question from the intake
+        perplexity_question = (
+            f"What are the key quantitative facts, historical precedents, and current data "
+            f"relevant to this scenario: {session.intake_text[:300]}? "
+            f"Focus on specific numbers, rates, prices, timelines, and market sizes."
+        )
 
-            # OpenAlex, FRED, World Bank, and news in parallel (no shared rate-limit pool).
-            raw_results = await asyncio.gather(
+        # Pick domain-relevant FRED series instead of hardcoded macro defaults
+        fred_series = await self._suggest_fred_series(session.intake_text, spec.domain)
+
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            oa         = OpenAlexAdapter(http)
+            fred       = FredAdapter(http)
+            wb         = WorldBankAdapter(http)
+            news       = NewsAdapter(http)
+            perplexity = PerplexityAdapter(http)
+
+            tasks = [
                 oa.fetch(academic_query, max_results=5),
-                fred.fetch("DCOILWTICO", max_results=1),
-                fred.fetch("CPIAUCSL", max_results=1),
-                fred.fetch("UNRATE", max_results=1),
                 wb.fetch("NY.GDP.MKTP.CD MS.MIL.XPND.GD.ZS NE.TRD.GNFS.ZS", max_results=5),
                 news.fetch(domain_query, max_results=5),
-                return_exceptions=True,
-            )
+                perplexity.fetch(perplexity_question, max_results=1),
+            ]
+            fred_labels = []
+            for series_id in fred_series:
+                tasks.append(fred.fetch(series_id, max_results=1))
+                fred_labels.append(f"FRED/{series_id}")
+
+            raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        perplexity_result = raw_results[3]
+        fred_raw = raw_results[4:]
+        raw_results = list(raw_results[:3]) + list(fred_raw)
 
         # Semantic Scholar: run sequentially after OA to avoid shared-pool collisions.
-        # Only call if OA returned fewer than 3 good results — saves unauthenticated quota.
         oa_ok_count = sum(1 for r in (raw_results[0] if isinstance(raw_results[0], list) else []) if r.ok)
         async with httpx.AsyncClient(timeout=25.0) as http:
             if oa_ok_count < 3:
@@ -410,9 +448,14 @@ class ScopingAgent:
 
         raw_results = list(raw_results) + [s2_results]
 
-        source_labels = ["OpenAlex", "FRED/DCOILWTICO",
-                         "FRED/CPIAUCSL", "FRED/UNRATE", "World Bank", "News feeds",
-                         "Semantic Scholar"]
+        source_labels = ["OpenAlex", "World Bank", "News feeds"] + fred_labels + ["Semantic Scholar"]
+
+        # Add Perplexity result separately (always include if ok)
+        if isinstance(perplexity_result, list) and perplexity_result:
+            ctx = session.research_context
+            for r in perplexity_result:
+                ctx.results.append(r)
+            logger.info("Perplexity initial research: ok=%s", perplexity_result[0].ok)
         source_status: dict[str, str] = {}
 
         ctx = session.research_context
@@ -1001,8 +1044,13 @@ Do NOT mention tool parameters or code. Write for a strategy consultant, not a d
             }
             for r in recommendations
         ]
+        # Only show theories actually discovered in THIS session's research phase
+        session_discoveries = set(session.research_context.library_additions or [])
         session.recommended_theories = [t for t in all_recs if t["source"] != "discovered"]
-        session.discovered_theories  = [t for t in all_recs if t["source"] == "discovered"]
+        session.discovered_theories  = [
+            t for t in all_recs
+            if t["source"] == "discovered" and t["theory_id"] in session_discoveries
+        ]
         session.state = ForgeState.ENSEMBLE_REVIEW
 
         additions = session.research_context.library_additions
@@ -1169,12 +1217,16 @@ Identify data gaps in two categories:
 1. PROPRIETARY gaps — firm-level or confidential data that public sources cannot provide
    (e.g. internal inventory levels, franchise margin data, company-specific hedging positions)
 
-2. RESOLVABLE gaps — gaps that public data sources (FRED, World Bank, academic papers, news)
-   could plausibly fill
-   (e.g. historical freight rate indices, food CPI elasticity to oil shocks, past Hormuz
-   closure price impacts, commodity spot prices during Middle East conflicts)
+2. RESOLVABLE gaps — gaps that public data can plausibly fill.
+   Frame each gap around the PHENOMENON, not a specific database or report.
+   Use broad, proxy-friendly language so a web search can answer it.
+   Good: "historical oil price spikes during Middle East conflict episodes"
+   Bad:  "Platts spot crude procurement data from IEA monthly reports"
+   Good: "US military response timelines in comparable Gulf crises"
+   Bad:  "DoD Congressional appropriations cycle lead times"
+   Prefer questions answerable from news archives, academic papers, FRED, or World Bank.
 
-Return 2-4 of each type.
+Return 2-4 of each type. Keep each gap description under 120 characters.
 
 Return JSON:
 {{
@@ -1227,7 +1279,12 @@ Return ONLY valid JSON."""
         yield "Launching targeted gap research...\n"
         session.gap_research_running = True
 
-        gaps = session.data_gaps
+        # On re-run, only research gaps not yet closed
+        already_closed = set(session.closed_gaps or [])
+        logger.info("GAP RERUN: already_closed=%d, data_gaps=%d, closed=%s",
+                    len(already_closed), len(session.data_gaps),
+                    [g[:40] for g in session.closed_gaps or []])
+        gaps = [g for g in session.data_gaps if g not in already_closed]
         if not gaps:
             session.gap_research_running = False
             yield "No data gaps to research.\n"
@@ -1244,6 +1301,8 @@ Return ONLY valid JSON."""
         closed_gaps: list[str] = []
         all_param_updates: dict[str, float] = {}
 
+        env_keys = list((session.simspec.initial_environment or {}).keys()) if session.simspec else []
+
         async with httpx.AsyncClient(timeout=35.0) as http:
             perplexity = PerplexityAdapter(http)
             oa         = OpenAlexAdapter(http)
@@ -1252,7 +1311,7 @@ Return ONLY valid JSON."""
             for idx, gap in enumerate(gaps):
                 yield f"[{idx + 1}/{len(gaps)}] {gap[:70]}\n"
                 grounded, value_note, updates = await self._research_gap_perplexity(
-                    gap, scenario_ctx, perplexity, oa, fred
+                    gap, scenario_ctx, perplexity, oa, fred, env_keys=env_keys
                 )
                 if grounded:
                     closed_gaps.append(gap)
@@ -1271,14 +1330,14 @@ Return ONLY valid JSON."""
         if session.simspec and all_param_updates:
             env = session.simspec.initial_environment or {}
             for k, v in all_param_updates.items():
-                if k in env:
-                    try:
-                        env[k] = float(max(0.0, min(1.0, float(v))))
-                    except (ValueError, TypeError):
-                        pass
+                try:
+                    env[k] = float(max(0.0, min(1.0, float(v))))
+                except (ValueError, TypeError):
+                    pass
 
-        session.closed_gaps = closed_gaps
-        session.remaining_gaps = [g for g in gaps if g not in closed_gaps]
+        # Accumulate — don't overwrite previous run's results
+        session.closed_gaps = list(set(session.closed_gaps or []) | set(closed_gaps))
+        session.remaining_gaps = [g for g in session.data_gaps if g not in session.closed_gaps]
         session.gap_research_running = False
         session.gap_research_complete = True
 
@@ -1293,6 +1352,7 @@ Return ONLY valid JSON."""
         perplexity: PerplexityAdapter,
         oa: OpenAlexAdapter,
         fred: FredAdapter,
+        env_keys: list[str] | None = None,
         max_rounds: int = 2,
     ) -> tuple[bool, str, dict]:
         """
@@ -1340,6 +1400,11 @@ Return ONLY valid JSON."""
             if results and results[0].ok:
                 raw_answer = results[0].summary
                 source_label = "Perplexity Sonar"
+                logger.info("GAP [%s] question: %s", gap[:40], research_question[:80])
+                logger.info("GAP [%s] perplexity ok, answer len=%d", gap[:40], len(raw_answer))
+            else:
+                err = results[0].error if results else "no results"
+                logger.warning("GAP [%s] perplexity failed: %s", gap[:40], err)
 
         if not raw_answer:
             # Fallback: OpenAlex + FRED in parallel
@@ -1382,20 +1447,26 @@ Return ONLY valid JSON."""
                 source_label = "OpenAlex/FRED"
 
         if not raw_answer:
+            logger.warning("GAP [%s] no answer from any source", gap[:40])
             return False, "", {}
 
         # ── Step 3: Sonnet evaluates and extracts ──────────────────────────────
+        env_keys_hint = (
+            f"\nExisting sim environment keys (pick the closest match or null):\n{', '.join(env_keys[:40])}\n"
+            if env_keys else ""
+        )
         eval_prompt = (
             f"Data gap: {gap}\n"
             f"Scenario: {scenario_ctx}\n\n"
             f"Research answer ({source_label}):\n{raw_answer}\n\n"
             f"Does this answer provide a quantitative calibration anchor?\n"
             f"  grounded = contains a specific %, rate, price, elasticity, or range\n"
-            f"  insufficient = only qualitative, no usable numbers\n\n"
+            f"  insufficient = only qualitative, no usable numbers\n"
+            f"{env_keys_hint}\n"
             f"Return ONLY JSON:\n"
             f'{{"grounded": true/false, '
             f'"value_note": "e.g. freight rates +40% during 1984 tanker war", '
-            f'"param_key": "snake_case_sim_env_key_or_null", '
+            f'"param_key": "exact_key_from_list_above_or_null", '
             f'"param_value_0_to_1": 0.4}}'
         )
         try:
@@ -1408,7 +1479,8 @@ Return ONLY valid JSON."""
             if raw2.startswith("```"):
                 raw2 = raw2.split("```")[1].lstrip("json")
             ev = json.loads(raw2)
-                if ev.get("grounded"):
+            logger.info("GAP [%s] eval: grounded=%s note=%s", gap[:40], ev.get("grounded"), ev.get("value_note", "")[:60])
+            if ev.get("grounded"):
                 value_note = ev.get("value_note") or ""
                 updates: dict[str, float] = {}
                 pk = ev.get("param_key")
@@ -1419,8 +1491,8 @@ Return ONLY valid JSON."""
                     except (ValueError, TypeError):
                         pass
                 return True, value_note, updates
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.error("GAP [%s] eval exception: %s", gap[:40], _exc)
 
         # ── Round 2: reframe using proxy angle ────────────────────────────────
         if not has_perplexity:
@@ -1768,10 +1840,31 @@ def _apply_patch(simspec: SimSpec, patch: dict[str, Any]) -> None:
 def _ensure_metrics_consistent(simspec: SimSpec) -> None:
     """
     Remove any metrics whose env_key is not in initial_environment.
+    If no metrics exist, auto-generate them from the most interesting env keys.
     Prevents ValidationError from stale metrics.
     """
-    if not simspec.metrics:
-        return
+    from core.spec import OutcomeMetricSpec
     env_keys = set(simspec.initial_environment.keys())
+
+    # Remove stale metrics
     valid_metrics = [m for m in simspec.metrics if m.env_key in env_keys]
+
+    # Auto-generate metrics if none defined
+    if not valid_metrics and env_keys:
+        # Skip internal/structural keys; prefer domain-meaningful ones
+        skip_prefixes = ("cobweb__", "richardson__", "wittman__", "global__")
+        skip_suffixes = ("_tick", "_seed", "_rng")
+        candidates = [
+            k for k in sorted(env_keys)
+            if not any(k.startswith(p) for p in skip_prefixes)
+            and not any(k.endswith(s) for s in skip_suffixes)
+        ]
+        # Cap at 8 metrics
+        for key in candidates[:8]:
+            label = key.replace("__", ": ").replace("_", " ").title()
+            valid_metrics.append(OutcomeMetricSpec(
+                name=label,
+                env_key=key,
+            ))
+
     object.__setattr__(simspec, "metrics", valid_metrics)

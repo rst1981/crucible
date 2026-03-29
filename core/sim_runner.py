@@ -118,6 +118,7 @@ class SimRunner:
         self._lock = threading.Lock()
         self._snapshot_triggers: list[ScheduledSnapshotTrigger | ThresholdSnapshotTrigger] = []
         self._running = False
+        self.ticks_completed: int = 0
         # Instance-level RNG — never use the global random module in this class.
         # This ensures two SimRunner instances (e.g. in EnsembleRunner) don't share
         # random state and that results are reproducible given the same seed.
@@ -290,6 +291,8 @@ class SimRunner:
                                 else trigger.label
                             )
                             self._take_snapshot(tick, label)
+
+                    self.ticks_completed += 1
 
         finally:
             self._running = False
