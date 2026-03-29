@@ -30,7 +30,10 @@ from anthropic import Anthropic
 from core.spec import SimSpec, TheoryRef
 from forge.gap_detector import detect_gaps, _merge_gaps
 from forge.researchers.fred import FredAdapter
+from forge.researchers.gdelt import GdeltAdapter
+from forge.researchers.guardian import GuardianAdapter
 from forge.researchers.news import NewsAdapter
+from forge.researchers.newsapi import NewsApiAdapter
 from forge.researchers.openalex import OpenAlexAdapter
 from forge.researchers.perplexity import PerplexityAdapter
 from forge.researchers.semantic_scholar import SemanticScholarAdapter
@@ -290,7 +293,7 @@ class ScopingAgent:
             session.domain = skeleton.domain
             session.state = ForgeState.PARALLEL_RESEARCH
 
-            yield "Running parallel research (Perplexity, OpenAlex, FRED, World Bank, news)...\n"
+            yield "Running parallel research (Perplexity, OpenAlex, FRED, World Bank, GDELT, Guardian, NewsAPI, news)...\n"
             source_status = await self._run_research(session)
             self._spec_builder.apply_research_hints(session.simspec, session.research_context)
             session.gaps = detect_gaps(session.simspec)
@@ -433,12 +436,18 @@ class ScopingAgent:
             wb         = WorldBankAdapter(http)
             news       = NewsAdapter(http)
             perplexity = PerplexityAdapter(http)
+            gdelt      = GdeltAdapter(http)
+            guardian   = GuardianAdapter(http)
+            newsapi    = NewsApiAdapter(http)
 
             tasks = [
                 oa.fetch(academic_query, max_results=5),
                 wb.fetch("NY.GDP.MKTP.CD MS.MIL.XPND.GD.ZS NE.TRD.GNFS.ZS", max_results=5),
                 news.fetch(domain_query, max_results=5),
                 perplexity.fetch(perplexity_question, max_results=1),
+                gdelt.fetch(domain_query, max_results=5),
+                guardian.fetch(domain_query, max_results=5),
+                newsapi.fetch(domain_query, max_results=5),
             ]
             fred_labels = []
             for series_id in fred_series:
@@ -448,7 +457,10 @@ class ScopingAgent:
             raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         perplexity_result = raw_results[3]
-        fred_raw = raw_results[4:]
+        gdelt_result   = raw_results[4]
+        guardian_result = raw_results[5]
+        newsapi_result  = raw_results[6]
+        fred_raw = raw_results[7:]
         raw_results = list(raw_results[:3]) + list(fred_raw)
 
         # Semantic Scholar: run sequentially after OA to avoid shared-pool collisions.
@@ -462,6 +474,14 @@ class ScopingAgent:
         raw_results = list(raw_results) + [s2_results]
 
         source_labels = ["OpenAlex", "World Bank", "News feeds"] + fred_labels + ["Semantic Scholar"]
+
+        # Add GDELT, Guardian, NewsAPI results directly to context
+        ctx = session.research_context
+        for label, result in [("GDELT", gdelt_result), ("Guardian", guardian_result), ("NewsAPI", newsapi_result)]:
+            if isinstance(result, list):
+                ok = [r for r in result if r.ok]
+                ctx.results.extend(result)
+                logger.info("%s: %d results (%d ok)", label, len(result), len(ok))
 
         # Add Perplexity result separately (always include if ok)
         if isinstance(perplexity_result, list) and perplexity_result:
