@@ -141,6 +141,7 @@ class ForgeSession:
     custom_theories:      list[dict] | None = None   # None = not yet customized
     deep_dive_complete:   bool              = False  # True after outcome_focus deep-dive has run
     assessment_path:      str | None       = None   # path to generated assessment .md
+    findings_path:        str | None       = None   # path to generated findings .md
     data_gaps:            list[str]        = field(default_factory=list)  # resolvable gaps (FRED/OA can fill)
     proprietary_gaps:     list[str]        = field(default_factory=list)  # firm/confidential data gaps
     gap_research_running: bool             = False
@@ -190,6 +191,7 @@ class ForgeSession:
             ],
             "research":              self.research_context.to_dict(),
             "assessment_path":       self.assessment_path,
+            "findings_path":         self.findings_path,
             "data_gaps":             self.data_gaps,
             "proprietary_gaps":      self.proprietary_gaps,
             "gap_research_running":  self.gap_research_running,

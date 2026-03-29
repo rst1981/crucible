@@ -18,6 +18,8 @@ export function ForgePage() {
   const [launching, setLaunching] = useState(false)
   const [generatingAssessment, setGeneratingAssessment] = useState(false)
   const [assessmentDone, setAssessmentDone] = useState(false)
+  const [generatingFindings, setGeneratingFindings] = useState(false)
+  const [findingsDone, setFindingsDone] = useState(false)
   const [runMode, setRunMode] = useState<RunMode>('recommended')
   const [customTheories, setCustomTheories] = useState<Theory[]>([])
   const [buildingCustom, setBuildingCustom] = useState(false)
@@ -119,6 +121,23 @@ export function ForgePage() {
         addMessage({ role: 'assistant', content: `Error: ${err}` })
       }
     )
+  }
+
+  const handleGenerateFindings = async () => {
+    if (!session) return
+    setGeneratingFindings(true)
+    try {
+      const apiBase = import.meta.env.VITE_API_URL || ''
+      const res = await fetch(`${apiBase}/forge/intake/${session.session_id}/findings`, { method: 'POST' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      setFindingsDone(true)
+      const updated = await forgeApi.getSession(session.session_id)
+      setSession(updated)
+    } catch (e) {
+      console.error('Findings generation failed', e)
+    } finally {
+      setGeneratingFindings(false)
+    }
   }
 
   const handleGenerateAssessment = async () => {
@@ -621,6 +640,37 @@ export function ForgePage() {
                   disabled={generatingAssessment}
                 >
                   {generatingAssessment ? 'Generating…' : assessmentDone || session.assessment_path ? 'Regenerate' : 'Generate'}
+                </button>
+              </div>
+            </div>
+          {/* Findings document */}
+          <div className="border border-border rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-text-primary">Findings Document</p>
+                <p className="text-xs text-text-secondary">
+                  {findingsDone || session.findings_path
+                    ? '✓ Generated — simulation results + analysis ready'
+                    : 'Run simulation with recommended parameters and produce findings doc'}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                {(findingsDone || session.findings_path) && (
+                  <a
+                    href={`${import.meta.env.VITE_API_URL || ''}/forge/intake/${session.session_id}/findings/download`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn-secondary text-xs py-1 px-3"
+                  >
+                    Download PDF
+                  </a>
+                )}
+                <button
+                  className="btn-primary text-xs py-1 px-3"
+                  onClick={handleGenerateFindings}
+                  disabled={generatingFindings}
+                >
+                  {generatingFindings ? 'Running sim…' : findingsDone || session.findings_path ? 'Regenerate' : 'Run & Generate'}
                 </button>
               </div>
             </div>

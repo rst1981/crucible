@@ -73,6 +73,7 @@ def _load_sessions() -> None:
             session.discovered_theories  = data.get("discovered_theories", [])
             session.custom_theories      = data.get("custom_theories")
             session.assessment_path      = data.get("assessment_path")
+            session.findings_path        = data.get("findings_path")
             session.data_gaps            = data.get("data_gaps", [])
             session.proprietary_gaps     = data.get("proprietary_gaps", [])
             session.gap_research_running  = False  # never resume mid-run
@@ -425,6 +426,89 @@ async def download_assessment(session_id: str, fmt: str = "pdf"):
     if not path.exists():
         raise HTTPException(status_code=404, detail="Assessment file not found on server")
     filename = f"{session.simspec.name or session_id}-assessment{path.suffix}".replace(" ", "-")
+    return FileResponse(path, media_type=media_type, filename=filename)
+
+
+# ── Findings document ─────────────────────────────────────────────────────────
+
+@router.post("/intake/{session_id}/findings", status_code=200)
+async def generate_findings(session_id: str) -> dict:
+    """
+    Run simulation with recommended parameters and generate a findings document.
+    Launches the sim, waits for completion, then produces findings MD + PDF.
+    """
+    import time as _time
+    session = _get_session(session_id)
+    if not session.recommended_theories:
+        raise HTTPException(status_code=409, detail="No recommended ensemble — complete the interview first")
+
+    # Launch sim with recommended theories
+    from api.routers.simulations import SimulationRun, _execute_run, _runs
+    from core.spec import TheoryRef
+
+    spec_dict = session.simspec.model_dump()
+    spec_dict["theories"] = [
+        {"theory_id": t["theory_id"], "priority": t.get("suggested_priority", i), "parameters": t.get("parameters", {})}
+        for i, t in enumerate(session.recommended_theories)
+    ]
+
+    run = SimulationRun(session_id=session_id, ensemble_type="recommended",
+                        theory_ids=[t["theory_id"] for t in session.recommended_theories])
+    _runs[run.sim_id] = run
+
+    # Run synchronously in thread (findings needs results immediately)
+    try:
+        await asyncio.to_thread(_execute_run_sync, run, spec_dict)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Simulation failed: {exc}")
+
+    if run.status != "complete":
+        raise HTTPException(status_code=500, detail=run.error or "Simulation did not complete")
+
+    # Generate findings doc
+    try:
+        from forge.findings_generator import generate_findings as _gen
+        md_path, pdf_path = await asyncio.to_thread(_gen, session, run.results)
+        session.findings_path = str(md_path)
+        _save_session(session)
+        return {
+            "session_id": session_id,
+            "sim_id":     run.sim_id,
+            "md_path":    str(md_path),
+            "pdf_path":   str(pdf_path),
+            "md_exists":  md_path.exists(),
+            "pdf_exists": pdf_path.exists(),
+        }
+    except Exception as exc:
+        logger.exception("Findings generation failed for session %s", session_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+def _execute_run_sync(run: "SimulationRun", simspec_dict: dict) -> None:
+    """Synchronous wrapper around sim execution for use with asyncio.to_thread."""
+    import asyncio as _asyncio
+    _asyncio.run(_execute_run_async(run, simspec_dict))
+
+
+async def _execute_run_async(run: "SimulationRun", simspec_dict: dict) -> None:
+    from api.routers.simulations import _execute_run
+    await _execute_run(run, simspec_dict)
+
+
+@router.get("/intake/{session_id}/findings/download")
+async def download_findings(session_id: str, fmt: str = "pdf"):
+    """Download the findings PDF or MD for a session."""
+    from fastapi.responses import FileResponse
+    session = _get_session(session_id)
+    if not getattr(session, "findings_path", None):
+        raise HTTPException(status_code=404, detail="Findings not yet generated")
+    md_path  = pathlib.Path(session.findings_path)
+    pdf_path = md_path.with_suffix(".pdf")
+    path = (pdf_path if fmt != "md" and pdf_path.exists() else md_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Findings file not found on server")
+    media_type = "application/pdf" if path.suffix == ".pdf" else "text/markdown"
+    filename = f"{session.simspec.name or session_id}-findings{path.suffix}".replace(" ", "-")
     return FileResponse(path, media_type=media_type, filename=filename)
 
 
