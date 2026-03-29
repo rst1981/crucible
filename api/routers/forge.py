@@ -275,14 +275,15 @@ async def generate_scenario() -> dict:
     return {"scenario": resp.content[0].text.strip()}
 
 
-@router.delete("/intake/{session_id}", status_code=204)
-async def delete_session(session_id: str):
+@router.delete("/intake/{session_id}", status_code=200)
+async def delete_session(session_id: str) -> dict:
     """Delete a scoping session."""
     _get_session(session_id)  # 404 if not found
     del _sessions[session_id]
     path = _session_path(session_id)
     if path.exists():
         path.unlink()
+    return {"deleted": True}
 
 
 # ── Ensemble review routes ─────────────────────────────────────────────────────

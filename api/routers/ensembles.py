@@ -148,14 +148,15 @@ async def get_ensemble(ensemble_id: str) -> dict:
     return _load(ensemble_id)
 
 
-@router.delete("/{ensemble_id}", status_code=204)
-async def delete_ensemble(ensemble_id: str) -> None:
+@router.delete("/{ensemble_id}", status_code=200)
+async def delete_ensemble(ensemble_id: str) -> dict:
     """Delete a saved ensemble."""
     path = _ensemble_path(ensemble_id)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Ensemble '{ensemble_id}' not found")
     path.unlink()
     logger.info("Deleted ensemble %s", ensemble_id)
+    return {"deleted": True}
 
 
 @router.post("/{ensemble_id}/fork", status_code=201)
