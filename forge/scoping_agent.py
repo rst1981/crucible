@@ -368,25 +368,43 @@ class ScopingAgent:
             reply = chunk
         return reply
 
+    # Verified FRED series IDs by topic — LLM picks from this list only
+    _FRED_CATALOG = {
+        "rates":      ["FEDFUNDS", "DFF", "DTB3", "DGS10", "DGS2", "T10Y2Y", "MORTGAGE30US"],
+        "inflation":  ["CPIAUCSL", "CPILFESL", "PCEPI", "PCEPILFE", "MICH"],
+        "growth":     ["GDP", "GDPC1", "INDPRO", "PAYEMS", "UNRATE", "ICSA"],
+        "credit":     ["DPCREDIT", "TOTALSL", "BUSLOANS", "DRSFRMACBS", "DRTSCILM"],
+        "fx":         ["DEXUSEU", "DEXJPUS", "DEXCHUS", "DEXKOUS", "DEXBZUS", "DEXMXUS"],
+        "energy":     ["DCOILWTICO", "DCOILBRENTEU", "DHHNGSP", "GASREGCOVW"],
+        "markets":    ["SP500", "NASDAQ100", "DJIA", "VIXCLS", "WILL5000IND"],
+        "sovereign":  ["IRLTLT01USM156N", "IRLTLT01DEA156N", "IRLTLT01JPM156N"],
+        "trade":      ["BOPGSTB", "IMPGS", "EXPGS", "TRFVOLUSM227NFWA"],
+        "money":      ["M2SL", "M1SL", "BOGMBASE", "WRMFSL"],
+        "housing":    ["CSUSHPINSA", "HOUST", "MSPUS", "RHORUSQ156N"],
+        "corporate":  ["DPCREDIT", "DISCONTINUED_SERIES", "CPROFIT", "BOGZ1FL104090005Q"],
+    }
+
     async def _suggest_fred_series(self, intake_text: str, domain: str) -> list[str]:
-        """Ask Haiku to suggest 2-3 relevant FRED series IDs for this scenario."""
+        """Ask Haiku to pick 2-3 FRED series IDs from a verified catalog."""
+        catalog_str = "\n".join(f"{k}: {', '.join(v)}" for k, v in self._FRED_CATALOG.items())
         try:
             resp = self._client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=80,
                 messages=[{"role": "user", "content": (
                     f"Scenario: {intake_text[:200]}\nDomain: {domain}\n\n"
-                    f"Name 2-3 FRED series IDs most relevant to this scenario.\n"
-                    f"Examples: DCOILWTICO, CPIAUCSL, UNRATE, MORTGAGE30US, SP500, BAMLH0A0HYM2\n"
-                    f"Return ONLY a JSON array of series IDs: [\"ID1\", \"ID2\"]"
+                    f"Pick 2-3 FRED series IDs most relevant to this scenario.\n"
+                    f"You MUST only use IDs from this verified list:\n{catalog_str}\n\n"
+                    f"Return ONLY a JSON array: [\"ID1\", \"ID2\"]"
                 )}],
             )
             raw = resp.content[0].text.strip()
             if raw.startswith("```"):
                 raw = raw.split("```")[1].lstrip("json").strip()
-            import re as _re
             ids = json.loads(raw)
-            return [str(i).strip().upper() for i in ids if i][:3]
+            # Only allow IDs that exist in the catalog
+            valid = {sid for ids in self._FRED_CATALOG.values() for sid in ids}
+            return [str(i).strip().upper() for i in ids if str(i).strip().upper() in valid][:3]
         except Exception:
             return []
 
