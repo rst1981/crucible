@@ -218,7 +218,7 @@ class TheoryMapper:
         )
         return results
 
-    def recommend_from_spec(self, spec: "SimSpec", n: int = 6) -> list[TheoryRecommendation]:
+    def recommend_from_spec(self, spec: "SimSpec", n: int = 6, preferred_framework: str | None = None) -> list[TheoryRecommendation]:
         """Convenience wrapper — extracts domain and description from a SimSpec.
 
         Augments description with outcome_focus and transmission channels from metadata
@@ -228,7 +228,8 @@ class TheoryMapper:
         meta = spec.metadata or {}
         outcome = meta.get("outcome_focus", "")
         channels = " ".join(meta.get("transmission_channels", []))
-        description = " ".join(filter(None, [spec.description, outcome, channels]))
+        # Append the consultant's chosen framework to description so scoring favours it
+        description = " ".join(filter(None, [spec.description, outcome, channels, preferred_framework or ""]))
         return self.recommend(
             domain=spec.domain,
             description=description,

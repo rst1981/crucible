@@ -1723,7 +1723,11 @@ Return ONLY valid JSON."""
             return {"question": full_question}, True  # stop_for_user=True
 
         if name == "select_theories":
-            recs = self._theory_mapper.recommend_from_spec(session.simspec)
+            theories_mode = (session.simspec.metadata or {}).get("theories_mode", "empirical")
+            recs = self._theory_mapper.recommend_from_spec(
+                session.simspec,
+                preferred_framework=None if theories_mode == "empirical" else theories_mode,
+            )
             theories = [
                 TheoryRef(theory_id=r.theory_id, priority=r.suggested_priority)
                 for r in recs
