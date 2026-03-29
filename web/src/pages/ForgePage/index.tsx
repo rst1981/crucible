@@ -604,13 +604,25 @@ export function ForgePage() {
                     : 'Generate scenario assessment (MD + PDF)'}
                 </p>
               </div>
-              <button
-                className="btn-primary text-xs py-1 px-3"
-                onClick={handleGenerateAssessment}
-                disabled={generatingAssessment}
-              >
-                {generatingAssessment ? 'Generating…' : assessmentDone || session.assessment_path ? 'Regenerate' : 'Generate'}
-              </button>
+              <div className="flex gap-2">
+                {(assessmentDone || session.assessment_path) && (
+                  <a
+                    href={`${import.meta.env.VITE_API_URL || ''}/forge/intake/${session.session_id}/assessment/download`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn-secondary text-xs py-1 px-3"
+                  >
+                    Download PDF
+                  </a>
+                )}
+                <button
+                  className="btn-primary text-xs py-1 px-3"
+                  onClick={handleGenerateAssessment}
+                  disabled={generatingAssessment}
+                >
+                  {generatingAssessment ? 'Generating…' : assessmentDone || session.assessment_path ? 'Regenerate' : 'Generate'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

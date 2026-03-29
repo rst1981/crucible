@@ -407,6 +407,27 @@ async def generate_assessment(session_id: str) -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.get("/intake/{session_id}/assessment/download")
+async def download_assessment(session_id: str, fmt: str = "pdf"):
+    """Download the assessment PDF or MD for a session."""
+    from fastapi.responses import FileResponse
+    session = _get_session(session_id)
+    if not session.assessment_path:
+        raise HTTPException(status_code=404, detail="Assessment not yet generated")
+    md_path = pathlib.Path(session.assessment_path)
+    pdf_path = md_path.with_suffix(".pdf")
+    if fmt == "md":
+        path = md_path
+        media_type = "text/markdown"
+    else:
+        path = pdf_path if pdf_path.exists() else md_path
+        media_type = "application/pdf" if path.suffix == ".pdf" else "text/markdown"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Assessment file not found on server")
+    filename = f"{session.simspec.name or session_id}-assessment{path.suffix}".replace(" ", "-")
+    return FileResponse(path, media_type=media_type, filename=filename)
+
+
 # ── Gap research endpoint ─────────────────────────────────────────────────────
 
 @router.post("/intake/{session_id}/research-gaps")
