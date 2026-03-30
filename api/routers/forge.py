@@ -463,9 +463,11 @@ async def generate_findings(session_id: str) -> dict:
             logger.info("Findings task started for session %s", session_id)
 
             run = SimulationRun(
+                sim_id=str(__import__("uuid").uuid4()),
                 session_id=session_id,
                 ensemble_type="recommended",
                 theory_ids=[t["theory_id"] for t in active_snapshot],
+                status="pending",
             )
             _runs[run.sim_id] = run
 
