@@ -361,6 +361,8 @@ def generate_findings(
     if _dual:
         metric_series_b = sim_results_b.get("metric_series", {})
         metric_names_b  = sim_results_b.get("metric_names", {})
+        final_env_b     = sim_results_b.get("final_env", {})
+        ticks_b         = sim_results_b.get("ticks", 0)
         theory_ids_b    = sim_results_b.get("theory_ids", [])
         trajectory_table_b = _build_trajectory_table(metric_series_b, metric_names_b)
         comparison_table   = _build_comparison_table(
@@ -369,6 +371,8 @@ def generate_findings(
     else:
         metric_series_b = {}
         metric_names_b  = {}
+        final_env_b     = {}
+        ticks_b         = 0
         theory_ids_b    = []
         trajectory_table_b = ""
         comparison_table   = ""
@@ -714,10 +718,44 @@ Write the document using EXACTLY these sections, in this order:
                                        final_env=final_env)
 
         from scripts.generate_charts import generate as _gen_charts
+
+        # Model A charts (fig1–fig5)
         generated = _gen_charts(slug, plan=chart_plan)
         for p in generated:
             chart_paths[p.stem] = p.resolve()
-        logger.info("Generated %d charts for %s", len(generated), slug)
+        logger.info("Generated %d Model A charts for %s", len(generated), slug)
+
+        # Model B charts — full fig1–fig5 set under {slug}-model-b
+        if _dual:
+            try:
+                slug_b = slug + "-model-b"
+                det_series_b_for_charts: dict = {}
+                for mid, vals in metric_series_b.items():
+                    det_series_b_for_charts[mid] = [{"tick": i, "value": float(v)} for i, v in enumerate(vals)]
+                results_b_for_charts = {
+                    "deterministic": {"series": det_series_b_for_charts, "final_env": final_env_b},
+                    "monte_carlo": sim_results_b.get("monte_carlo", {}),
+                    "ticks": ticks_b,
+                    "metric_series": metric_series_b,
+                    "metric_names": metric_names_b,
+                    "final_env": final_env_b,
+                }
+                scenarios_dir_b = Path(__file__).parent.parent / "scenarios" / slug_b
+                scenarios_dir_b.mkdir(parents=True, exist_ok=True)
+                (scenarios_dir_b / "results.json").write_text(
+                    json.dumps(results_b_for_charts, default=str), encoding="utf-8"
+                )
+                chart_plan_b = _build_chart_plan(
+                    spec, metric_series_b, metric_names_b,
+                    sim_results_b.get("monte_carlo", {}), tick_unit,
+                    final_env=final_env_b,
+                )
+                generated_b = _gen_charts(slug_b, plan=chart_plan_b)
+                for p in generated_b:
+                    chart_paths["b_" + p.stem] = p.resolve()
+                logger.info("Generated %d Model B charts for %s", len(generated_b), slug_b)
+            except Exception as cmp_exc:
+                logger.warning("Model B chart generation failed: %s", cmp_exc)
 
         # ── Comparison chart (dual-model overlay) ────────────────────────────
         if _dual:
@@ -760,12 +798,18 @@ Write the document using EXACTLY these sections, in this order:
          _img("fig5_mc_final_distribution", "Monte Carlo Final Distribution — Key Metrics")),
     ]
 
-    # Dual-model: inject comparison chart after "## 7. Model Comparison"
+    # Dual-model: Model B charts + comparison overlay
     if _dual:
-        injections.append((
-            "### Key Finding",
-            _img("fig_comparison", "Model Comparison — Recommended vs Custom Ensemble"),
-        ))
+        domain_label_b = domain_label
+        injections += [
+            ("### Model B: Results by Module",
+             _img("b_fig1_metrics_dashboard", f"Model B — {domain_label_b} Metrics Dashboard")),
+            ("### Model B: Cascade Interaction",
+             _img("b_fig2_shock_cascade", f"Model B — Shock Cascade") +
+             _img("b_fig4_secondary_indicators", f"Model B — Secondary Indicators")),
+            ("### Key Finding",
+             _img("fig_comparison", "Model Comparison — Recommended vs Custom Ensemble")),
+        ]
 
     for marker, img_block in injections:
         if img_block and marker in md_content:
