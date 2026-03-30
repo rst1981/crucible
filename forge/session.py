@@ -143,6 +143,8 @@ class ForgeSession:
     assessment_path:      str | None       = None   # path to generated assessment .md
     findings_path:        str | None       = None   # path to generated findings .md
     findings_md:          str | None       = None   # full MD content stored for Railway (filesystem ephemeral)
+    findings_job_status:  str              = "not_started"  # "not_started"|"running"|"complete"|"error"
+    findings_job_error:   str | None       = None   # error message if findings_job_status == "error"
     data_gaps:            list[str]        = field(default_factory=list)  # resolvable gaps (FRED/OA can fill)
     proprietary_gaps:     list[str]        = field(default_factory=list)  # firm/confidential data gaps
     gap_research_running: bool             = False
@@ -194,6 +196,8 @@ class ForgeSession:
             "assessment_path":       self.assessment_path,
             "findings_path":         self.findings_path,
             "findings_md":           self.findings_md,
+            "findings_job_status":   self.findings_job_status,
+            "findings_job_error":    self.findings_job_error,
             "data_gaps":             self.data_gaps,
             "proprietary_gaps":      self.proprietary_gaps,
             "gap_research_running":  self.gap_research_running,

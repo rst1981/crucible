@@ -70,6 +70,8 @@ async def _load_sessions() -> None:
             session.assessment_path      = data.get("assessment_path")
             session.findings_path        = data.get("findings_path")
             session.findings_md          = data.get("findings_md")
+            session.findings_job_status  = data.get("findings_job_status", "not_started")
+            session.findings_job_error   = data.get("findings_job_error")
             session.data_gaps            = data.get("data_gaps", [])
             session.proprietary_gaps     = data.get("proprietary_gaps", [])
             session.gap_research_running  = False  # never resume mid-run
@@ -425,6 +427,7 @@ async def generate_findings(session_id: str) -> dict:
     """
     Kick off findings generation as a background task and return immediately.
     Poll GET /intake/{session_id}/findings/status for progress.
+    Status is stored in Postgres (session) so any Railway instance can answer polls.
     """
     session = _get_session(session_id)
 
@@ -434,15 +437,26 @@ async def generate_findings(session_id: str) -> dict:
     if not active:
         raise HTTPException(status_code=409, detail="No theories in ensemble — complete ensemble review first")
 
-    # Mark as in-progress so the status endpoint can report it
-    _findings_status[session_id] = {"status": "running", "error": None}
+    # Mark as running in Postgres so any Railway instance reports the correct status
+    session.findings_job_status = "running"
+    session.findings_job_error  = None
+    _save_session(session)
 
     async def _run_findings():
         from api.routers.simulations import SimulationRun, _execute_run, _runs
+        # Re-fetch session from in-memory store (it's the live object)
+        s = _sessions.get(session_id)
+        if not s:
+            logger.error("Findings task: session %s disappeared", session_id)
+            return
         try:
-            spec_dict = session.simspec.model_dump()
+            spec_dict = s.simspec.model_dump()
             spec_dict["theories"] = [
-                {"theory_id": t["theory_id"], "priority": t.get("suggested_priority", i), "parameters": t.get("parameters", {})}
+                {
+                    "theory_id": t["theory_id"],
+                    "priority":  int(t.get("suggested_priority") or i),
+                    "parameters": t.get("parameters") or {},
+                }
                 for i, t in enumerate(active)
             ]
             run = SimulationRun(session_id=session_id, ensemble_type="recommended",
@@ -455,47 +469,42 @@ async def generate_findings(session_id: str) -> dict:
                 raise RuntimeError(run.error or "Simulation did not complete")
 
             from forge.findings_generator import generate_findings as _gen
-            md_path, pdf_path = await asyncio.to_thread(_gen, session, run.results)
-            session.findings_path = str(md_path)
-            # Store MD content in session so download works after Railway redeploy (ephemeral FS)
+            md_path, pdf_path = await asyncio.to_thread(_gen, s, run.results)
+            s.findings_path       = str(md_path)
+            s.findings_job_status = "complete"
+            s.findings_job_error  = None
             try:
-                session.findings_md = md_path.read_text(encoding="utf-8")
+                s.findings_md = md_path.read_text(encoding="utf-8")
             except Exception:
                 pass
-            _save_session(session)
-            _findings_status[session_id] = {
-                "status":     "complete",
-                "error":      None,
-                "md_path":    str(md_path),
-                "pdf_path":   str(pdf_path),
-                "pdf_exists": pdf_path.exists(),
-            }
+            _save_session(s)
+            logger.info("Findings complete for session %s: %s", session_id, md_path)
+
         except Exception as exc:
             import traceback
             tb = traceback.format_exc()
-            logger.exception("Findings generation failed for session %s: %s", session_id, tb)
-            _findings_status[session_id] = {"status": "error", "error": str(exc), "detail": tb}
+            logger.exception("Findings generation failed for session %s", session_id)
+            s = _sessions.get(session_id)
+            if s:
+                s.findings_job_status = "error"
+                s.findings_job_error  = f"{exc}\n\n{tb}"
+                _save_session(s)
 
     asyncio.create_task(_run_findings())
     return {"session_id": session_id, "status": "running"}
 
 
-# In-memory findings job status (survives the request; keyed by session_id)
-_findings_status: dict[str, dict] = {}
-
-
 @router.get("/intake/{session_id}/findings/status")
 async def findings_status(session_id: str) -> dict:
-    """Poll findings generation progress."""
-    _get_session(session_id)  # 404 if session gone
-    status = _findings_status.get(session_id)
-    if not status:
-        # Check if already done from a previous run
-        session = _get_session(session_id)
-        if session.findings_path:
-            return {"status": "complete", "error": None}
-        return {"status": "not_started", "error": None}
-    return status
+    """
+    Poll findings generation progress.
+    Reads from session (Postgres) — works across multiple Railway instances.
+    """
+    session = _get_session(session_id)
+    return {
+        "status": session.findings_job_status,
+        "error":  session.findings_job_error,
+    }
 
 
 
