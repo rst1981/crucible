@@ -461,39 +461,6 @@ async def generate_findings(session_id: str) -> dict:
         for i, t in enumerate(active_snapshot)
     ]
 
-    # Rebuild metrics from theory write keys so we track actual outputs, not
-    # static parameters.  Existing sessions may have bad metrics saved; fix now.
-    try:
-        from core.theories import get_theory
-        theory_write_keys: list[str] = []
-        seen: set[str] = set()
-        for t in simspec_dict_snapshot["theories"]:
-            try:
-                cls = get_theory(t["theory_id"])
-                instance = cls(t.get("parameters") or {})
-                for k in instance.state_variables.writes:
-                    if k not in seen:
-                        theory_write_keys.append(k)
-                        seen.add(k)
-            except Exception:
-                pass
-        env_keys = set(simspec_dict_snapshot.get("initial_environment", {}).keys())
-        trackable = [k for k in theory_write_keys if k in env_keys]
-        if trackable:
-            import uuid as _uuid
-            simspec_dict_snapshot["metrics"] = [
-                {
-                    "metric_id": str(_uuid.uuid4()),
-                    "name": k.replace("__", ": ").replace("_", " ").title(),
-                    "env_key": k,
-                    "aggregation": "last",
-                }
-                for k in trackable[:12]
-            ]
-            logger.info("Findings: rebuilt %d metrics from theory writes", len(trackable[:12]))
-    except Exception as exc:
-        logger.warning("Findings: could not rebuild metrics from theory writes: %s", exc)
-
     async def _run_findings():
         """Background task — entire body is wrapped so any crash sets status=error."""
         import traceback as _tb

@@ -1876,63 +1876,63 @@ def _apply_patch(simspec: SimSpec, patch: dict[str, Any]) -> None:
 
 def _ensure_metrics_consistent(simspec: SimSpec) -> None:
     """
-    Remove any metrics whose env_key is not in initial_environment.
-    If no metrics exist, auto-generate them from the most interesting env keys.
-    Prevents ValidationError from stale metrics.
+    Replace metrics with theory write keys so we track actual simulation outputs.
+
+    Theory output keys are NOT in initial_environment — they're seeded by
+    theory.setup() at runtime.  The old approach of filtering by
+    initial_environment always discarded them, leaving only static parameters.
+
+    Strategy:
+      1. Load each theory, collect its state_variables.writes keys (dynamic outputs).
+      2. Use those as metrics — they will exist in env after runner.setup().
+      3. Fall back to non-static initial_environment keys only if no theories loaded.
     """
     from core.spec import OutcomeMetricSpec
+
+    # ── Collect theory write keys ────────────────────────────────────────────
+    theory_write_keys: list[str] = []
+    seen: set[str] = set()
+    try:
+        from core.theories import get_theory
+        for tref in simspec.theories:
+            try:
+                cls = get_theory(tref.theory_id)
+                instance = cls(tref.parameters or {})
+                for k in instance.state_variables.writes or []:
+                    if k not in seen:
+                        theory_write_keys.append(k)
+                        seen.add(k)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    if theory_write_keys:
+        # Use theory outputs as metrics — runner.setup() seeds them into env
+        metrics = [
+            OutcomeMetricSpec(
+                name=k.replace("__", ": ").replace("_", " ").title(),
+                env_key=k,
+            )
+            for k in theory_write_keys[:12]
+        ]
+        object.__setattr__(simspec, "metrics", metrics)
+        return
+
+    # ── Fallback: pick non-static initial_environment keys ───────────────────
     env_keys = set(simspec.initial_environment.keys())
+    skip_prefixes = ("baseline_", "initial_", "param_", "config_", "default_")
+    skip_suffixes = ("_tick", "_seed", "_rng", "_baseline", "_initial", "_param",
+                     "_rate", "_elasticity", "_decay", "_factor", "_coefficient",
+                     "_threshold", "_capacity", "_weight")
+    candidates = [
+        k for k in sorted(env_keys)
+        if not any(k.startswith(p) for p in skip_prefixes)
+        and not any(k.endswith(s) for s in skip_suffixes)
+    ] or sorted(env_keys)
 
-    # Remove stale metrics
-    valid_metrics = [m for m in simspec.metrics if m.env_key in env_keys]
-
-    # Auto-generate metrics if none defined
-    if not valid_metrics and env_keys:
-        # Prefer keys that the active theories actually write (dynamic state variables)
-        theory_write_keys: set[str] = set()
-        try:
-            from core.theories import get_theory
-            for tref in simspec.theories:
-                try:
-                    cls = get_theory(tref.theory_id)
-                    instance = cls(tref.parameters or {})
-                    sv = instance.state_variables
-                    theory_write_keys.update(sv.writes or [])
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        # Skip static parameter/config keys
-        skip_prefixes = (
-            "baseline_", "initial_", "param_", "config_", "default_",
-        )
-        skip_suffixes = ("_tick", "_seed", "_rng", "_baseline", "_initial", "_param",
-                         "_rate", "_elasticity", "_decay", "_factor", "_coefficient",
-                         "_threshold", "_capacity", "_weight")
-
-        def _is_dynamic(k: str) -> bool:
-            if any(k.startswith(p) for p in skip_prefixes):
-                return False
-            if any(k.endswith(s) for s in skip_suffixes):
-                return False
-            return True
-
-        # Priority 1: theory write keys that exist in env
-        priority = sorted(theory_write_keys & env_keys)
-        # Priority 2: other non-static env keys
-        rest = sorted(k for k in env_keys if k not in theory_write_keys and _is_dynamic(k))
-        # Fallback: everything except internal keys
-        fallback = sorted(k for k in env_keys
-                          if not any(k.endswith(s) for s in ("_tick", "_seed", "_rng")))
-        candidates = priority + rest or fallback
-
-        # Cap at 8 metrics
-        for key in candidates[:8]:
-            label = key.replace("__", ": ").replace("_", " ").title()
-            valid_metrics.append(OutcomeMetricSpec(
-                name=label,
-                env_key=key,
-            ))
-
-    object.__setattr__(simspec, "metrics", valid_metrics)
+    metrics = []
+    for key in candidates[:8]:
+        label = key.replace("__", ": ").replace("_", " ").title()
+        metrics.append(OutcomeMetricSpec(name=label, env_key=key))
+    object.__setattr__(simspec, "metrics", metrics)
