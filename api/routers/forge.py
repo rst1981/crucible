@@ -194,11 +194,11 @@ async def send_message(session_id: str, body: MessageRequest, request: Request):
             while True:
                 try:
                     kind, value = await asyncio.wait_for(
-                        chunk_queue.get(), timeout=15.0
+                        chunk_queue.get(), timeout=8.0
                     )
                 except asyncio.TimeoutError:
-                    # Generator is still running — keep connection alive
-                    yield ": heartbeat\n\n"
+                    # Send a real data event — Railway load balancer ignores SSE comments
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
                     continue
 
                 if kind == "done":
@@ -657,7 +657,7 @@ async def research_gaps(session_id: str, request: Request):
             while True:
                 try:
                     kind, value = await asyncio.wait_for(
-                        chunk_queue.get(), timeout=15.0
+                        chunk_queue.get(), timeout=8.0
                     )
                 except asyncio.TimeoutError:
                     yield ": heartbeat\n\n"
