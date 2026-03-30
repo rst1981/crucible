@@ -1888,21 +1888,45 @@ def _ensure_metrics_consistent(simspec: SimSpec) -> None:
 
     # Auto-generate metrics if none defined
     if not valid_metrics and env_keys:
-        # Skip internal/structural keys and static baseline/parameter keys
+        # Prefer keys that the active theories actually write (dynamic state variables)
+        theory_write_keys: set[str] = set()
+        try:
+            from core.theories import get_theory
+            for tref in simspec.theories:
+                try:
+                    cls = get_theory(tref.theory_id)
+                    instance = cls(tref.parameters or {})
+                    sv = instance.state_variables
+                    theory_write_keys.update(sv.writes or [])
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Skip static parameter/config keys
         skip_prefixes = (
-            "cobweb__", "richardson__", "wittman__", "global__",
             "baseline_", "initial_", "param_", "config_", "default_",
         )
-        skip_suffixes = ("_tick", "_seed", "_rng", "_baseline", "_initial", "_param")
-        candidates = [
-            k for k in sorted(env_keys)
-            if not any(k.startswith(p) for p in skip_prefixes)
-            and not any(k.endswith(s) for s in skip_suffixes)
-        ]
-        # If filtering removes everything, fall back to all keys (better than nothing)
-        if not candidates:
-            candidates = [k for k in sorted(env_keys)
-                          if not any(k.endswith(s) for s in ("_tick", "_seed", "_rng"))]
+        skip_suffixes = ("_tick", "_seed", "_rng", "_baseline", "_initial", "_param",
+                         "_rate", "_elasticity", "_decay", "_factor", "_coefficient",
+                         "_threshold", "_capacity", "_weight")
+
+        def _is_dynamic(k: str) -> bool:
+            if any(k.startswith(p) for p in skip_prefixes):
+                return False
+            if any(k.endswith(s) for s in skip_suffixes):
+                return False
+            return True
+
+        # Priority 1: theory write keys that exist in env
+        priority = sorted(theory_write_keys & env_keys)
+        # Priority 2: other non-static env keys
+        rest = sorted(k for k in env_keys if k not in theory_write_keys and _is_dynamic(k))
+        # Fallback: everything except internal keys
+        fallback = sorted(k for k in env_keys
+                          if not any(k.endswith(s) for s in ("_tick", "_seed", "_rng")))
+        candidates = priority + rest or fallback
+
         # Cap at 8 metrics
         for key in candidates[:8]:
             label = key.replace("__", ": ").replace("_", " ").title()
