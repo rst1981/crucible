@@ -70,8 +70,15 @@ async def _load_sessions() -> None:
             session.assessment_path      = data.get("assessment_path")
             session.findings_path        = data.get("findings_path")
             session.findings_md          = data.get("findings_md")
-            session.findings_job_status  = data.get("findings_job_status", "not_started")
-            session.findings_job_error   = data.get("findings_job_error")
+            # If a job was "running" when the container died, mark it failed so
+            # the frontend doesn't poll forever waiting for a task that's gone.
+            raw_job_status = data.get("findings_job_status", "not_started")
+            if raw_job_status == "running":
+                raw_job_status = "error"
+                session.findings_job_error = "Service restarted while findings were generating — please try again."
+            else:
+                session.findings_job_error = data.get("findings_job_error")
+            session.findings_job_status = raw_job_status
             session.data_gaps            = data.get("data_gaps", [])
             session.proprietary_gaps     = data.get("proprietary_gaps", [])
             session.gap_research_running  = False  # never resume mid-run
@@ -471,7 +478,7 @@ async def generate_findings(session_id: str) -> dict:
             )
             _runs[run.sim_id] = run
 
-            await _execute_run(run, simspec_dict_snapshot)
+            await asyncio.wait_for(_execute_run(run, simspec_dict_snapshot), timeout=300.0)
 
             if run.status != "complete":
                 raise RuntimeError(run.error or "Simulation did not complete")

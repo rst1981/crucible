@@ -66,9 +66,15 @@ export function ForgePage() {
     }
   }, [buildingCustom])
 
-  // Resume polling if page loaded/refreshed while findings was running
+  // Resume polling if page loaded/refreshed while findings was running,
+  // or surface an error that happened before page load
   useEffect(() => {
-    if (!session || session.findings_job_status !== 'running') return
+    if (!session) return
+    if (session.findings_job_status === 'error' && !generatingFindings) {
+      setFindingsError(session.findings_job_error || 'Findings generation failed — please try again')
+      return
+    }
+    if (session.findings_job_status !== 'running') return
     if (generatingFindings) return  // already polling
     setGeneratingFindings(true)
     setFindingsError(null)
