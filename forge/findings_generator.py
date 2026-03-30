@@ -57,22 +57,54 @@ def _build_chart_plan(
     metric_names: dict,
     monte_carlo: dict,
     tick_unit: str,
+    final_env: dict | None = None,
 ) -> dict:
     """
     Build a scenario-specific chart plan by ranking metrics by variance
     (max-min range) so the most dynamic metrics get the prominent panels.
+    Falls back to final_env deviation when all tracked metrics are flat.
     """
-    # Rank all metrics by their range (most interesting first)
+    # Skip clearly static keys: "baseline_*" prefixes and zero-variance series
+    _SKIP_PREFIXES = ("baseline_", "initial_", "param_", "config_")
+
     ranked: list[tuple[float, str]] = []
+    flat: list[tuple[float, str]] = []   # kept as last-resort fallback
     for mid, vals in metric_series.items():
         if not vals:
             continue
+        if any(mid.lower().startswith(p) for p in _SKIP_PREFIXES):
+            continue
         try:
-            lo, hi = min(float(v) for v in vals), max(float(v) for v in vals)
-            ranked.append((hi - lo, mid))
+            floats = [float(v) for v in vals]
+            lo, hi = min(floats), max(floats)
+            rng = hi - lo
+            if rng > 1e-4:
+                ranked.append((rng, mid))
+            else:
+                flat.append((rng, mid))
         except (TypeError, ValueError):
             pass
     ranked.sort(reverse=True)
+
+    # If no dynamic metrics found in metric_series, try final_env deviation from 0.5
+    if not ranked and final_env:
+        env_ranked = []
+        for k, v in final_env.items():
+            if any(k.lower().startswith(p) for p in _SKIP_PREFIXES):
+                continue
+            try:
+                env_ranked.append((abs(float(v) - 0.5), k))
+            except (TypeError, ValueError):
+                pass
+        env_ranked.sort(reverse=True)
+        # Can't chart final_env as time series, so fall back to flat metrics
+        # but reorder them by their final value deviation
+        env_keys = {k for _, k in env_ranked[:10]}
+        ranked = [(r, m) for r, m in flat if m in env_keys] + \
+                 [(r, m) for r, m in flat if m not in env_keys]
+    elif not ranked:
+        ranked = flat  # last resort: show something
+
     top_ids = [mid for _, mid in ranked]
 
     def _label(mid: str) -> str:
@@ -469,7 +501,8 @@ Write the document using EXACTLY these sections, in this order:
         results_json.write_text(json.dumps(results_for_charts, default=str), encoding="utf-8")
 
         chart_plan = _build_chart_plan(spec, metric_series, metric_names,
-                                       sim_results.get("monte_carlo", {}), tick_unit)
+                                       sim_results.get("monte_carlo", {}), tick_unit,
+                                       final_env=final_env)
 
         from scripts.generate_charts import generate as _gen_charts
         generated = _gen_charts(slug, plan=chart_plan)

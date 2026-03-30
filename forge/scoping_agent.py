@@ -1888,14 +1888,21 @@ def _ensure_metrics_consistent(simspec: SimSpec) -> None:
 
     # Auto-generate metrics if none defined
     if not valid_metrics and env_keys:
-        # Skip internal/structural keys; prefer domain-meaningful ones
-        skip_prefixes = ("cobweb__", "richardson__", "wittman__", "global__")
-        skip_suffixes = ("_tick", "_seed", "_rng")
+        # Skip internal/structural keys and static baseline/parameter keys
+        skip_prefixes = (
+            "cobweb__", "richardson__", "wittman__", "global__",
+            "baseline_", "initial_", "param_", "config_", "default_",
+        )
+        skip_suffixes = ("_tick", "_seed", "_rng", "_baseline", "_initial", "_param")
         candidates = [
             k for k in sorted(env_keys)
             if not any(k.startswith(p) for p in skip_prefixes)
             and not any(k.endswith(s) for s in skip_suffixes)
         ]
+        # If filtering removes everything, fall back to all keys (better than nothing)
+        if not candidates:
+            candidates = [k for k in sorted(env_keys)
+                          if not any(k.endswith(s) for s in ("_tick", "_seed", "_rng"))]
         # Cap at 8 metrics
         for key in candidates[:8]:
             label = key.replace("__", ": ").replace("_", " ").title()
