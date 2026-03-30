@@ -44,6 +44,110 @@ def _fmt(v) -> str:
         return str(v)
 
 
+_PALETTE = [
+    "#2563EB", "#16A34A", "#DC2626", "#7C3AED",
+    "#F97316", "#0891B2", "#854D0E", "#BE185D",
+    "#B45309", "#4B5563",
+]
+
+
+def _build_chart_plan(
+    spec,
+    metric_series: dict,
+    metric_names: dict,
+    monte_carlo: dict,
+    tick_unit: str,
+) -> dict:
+    """
+    Build a scenario-specific chart plan by ranking metrics by variance
+    (max-min range) so the most dynamic metrics get the prominent panels.
+    """
+    # Rank all metrics by their range (most interesting first)
+    ranked: list[tuple[float, str]] = []
+    for mid, vals in metric_series.items():
+        if not vals:
+            continue
+        try:
+            lo, hi = min(float(v) for v in vals), max(float(v) for v in vals)
+            ranked.append((hi - lo, mid))
+        except (TypeError, ValueError):
+            pass
+    ranked.sort(reverse=True)
+    top_ids = [mid for _, mid in ranked]
+
+    def _label(mid: str) -> str:
+        return metric_names.get(mid, mid.replace("_", " ").replace("__", ": ").title())
+
+    def _short(mid: str) -> str:
+        """Short label for boxplot axis."""
+        lbl = _label(mid)
+        return lbl[:14] if len(lbl) > 14 else lbl
+
+    # Top 4 go into dashboard + cascade panels
+    fin_metrics = [
+        (mid, _label(mid), _PALETTE[i % len(_PALETTE)])
+        for i, mid in enumerate(top_ids[:4])
+    ]
+
+    # Next 4 go into secondary-indicators panel (split left/right)
+    secondary = top_ids[4:8] if len(top_ids) > 4 else top_ids[:4]
+    mid_split = len(secondary) // 2
+    climate_left = [
+        (mid, _label(mid), _PALETTE[(i + 4) % len(_PALETTE)], "line")
+        for i, mid in enumerate(secondary[:mid_split or 1])
+    ]
+    climate_right = [
+        (mid, _label(mid), _PALETTE[(i + 6) % len(_PALETTE)], "dashed")
+        for i, mid in enumerate(secondary[mid_split or 1:])
+    ]
+
+    # MC fan: pick the metric with largest p95-p5 spread at final tick
+    mc_fan_metric = top_ids[0] if top_ids else None
+    mc_fan_label = _label(mc_fan_metric) if mc_fan_metric else "Primary Metric"
+    bands = monte_carlo.get("bands", {})
+    if bands:
+        best_spread, best_mid = 0.0, None
+        for mid, band in bands.items():
+            p5 = band.get("p5", [None])
+            p95 = band.get("p95", [None])
+            if p5 and p95 and p5[-1] is not None and p95[-1] is not None:
+                spread = float(p95[-1]) - float(p5[-1])
+                if spread > best_spread:
+                    best_spread, best_mid = spread, mid
+        if best_mid:
+            mc_fan_metric = best_mid
+            mc_fan_label = _label(best_mid)
+
+    # Shock annotations from simspec
+    shocks_dict: dict[int, str] = {}
+    if spec.shocks:
+        for sh in spec.shocks:
+            label = sh.label or ", ".join(sh.variables.keys())
+            # Truncate long labels for chart readability
+            words = label.split()
+            shocks_dict[sh.tick] = "\n".join(
+                " ".join(words[i:i+2]) for i in range(0, min(len(words), 4), 2)
+            )
+
+    return {
+        "tick_unit": tick_unit,
+        "shocks": shocks_dict,
+        "financial_metrics": fin_metrics,
+        "cascade_metrics": fin_metrics,
+        "cascade_annotations": [],
+        "climate_left": climate_left,
+        "climate_right": climate_right,
+        "replant_threshold": None,
+        "covenant_threshold": None,
+        "boxplot_metrics": [
+            (mid, _short(mid)) for mid in top_ids[:5]
+        ],
+        "mc_fan_metric": mc_fan_metric,
+        "mc_fan_label": mc_fan_label,
+        "mc_fan_threshold": None,
+    }
+
+
 def generate_findings(session: "ForgeSession", sim_results: dict) -> tuple[Path, Path]:
     """
     Generate a findings document from a completed simulation run.
@@ -337,17 +441,35 @@ Write the document using EXACTLY these sections, in this order:
     md_content = resp.content[0].text.strip()
 
     # ── Generate charts ──────────────────────────────────────────────────────
-    # Save sim_results to scenarios/{slug}/results.json so generate_charts can read it
+    # Convert metric_series flat lists → records format expected by generate_charts.py
+    # and wrap in {"deterministic": {"series": ...}, "monte_carlo": ...}
     import json
     chart_paths: dict[str, Path] = {}
     try:
+        det_series: dict = {}
+        for mid, vals in metric_series.items():
+            det_series[mid] = [{"tick": i, "value": float(v)} for i, v in enumerate(vals)]
+
+        results_for_charts = {
+            "deterministic": {"series": det_series, "final_env": final_env},
+            "monte_carlo": sim_results.get("monte_carlo", {}),
+            # keep original flat fields for other consumers
+            "ticks": ticks,
+            "metric_series": metric_series,
+            "metric_names": metric_names,
+            "final_env": final_env,
+        }
+
         scenarios_dir = Path(__file__).parent.parent / "scenarios" / slug
         scenarios_dir.mkdir(parents=True, exist_ok=True)
         results_json = scenarios_dir / "results.json"
-        results_json.write_text(json.dumps(sim_results, default=str), encoding="utf-8")
+        results_json.write_text(json.dumps(results_for_charts, default=str), encoding="utf-8")
+
+        chart_plan = _build_chart_plan(spec, metric_series, metric_names,
+                                       sim_results.get("monte_carlo", {}), tick_unit)
 
         from scripts.generate_charts import generate as _gen_charts
-        generated = _gen_charts(slug)
+        generated = _gen_charts(slug, plan=chart_plan)
         for p in generated:
             chart_paths[p.stem] = p.resolve()
         logger.info("Generated %d charts for %s", len(generated), slug)
@@ -364,17 +486,18 @@ Write the document using EXACTLY these sections, in this order:
         return f'\n\n![{caption}]({p})\n\n*{caption}*\n'
 
     # Injection points (insert AFTER these section headers):
+    domain_label = (spec.domain or "Scenario").title()
     injections = [
         # After Executive Findings → shock cascade + MC fan
         ("## 1. Simulation Design",
-         _img("fig2_shock_cascade", "Shock Cascade — Primary Financial Metrics") +
-         _img("fig3_mc_fan", "Survival Probability — 300-Run Monte Carlo Fan Chart")),
+         _img("fig2_shock_cascade", f"Shock Cascade — {domain_label} Primary Metrics") +
+         _img("fig3_mc_fan", f"Monte Carlo Fan Chart — {ticks} {tick_unit}s, 300 Runs")),
         # After Section 1 shock table → key metrics dashboard
         ("## 2. Results by Module",
-         _img("fig1_metrics_dashboard", "Financial Health Dashboard — All Metrics")),
+         _img("fig1_metrics_dashboard", f"{domain_label} Metrics Dashboard")),
         # After Section 2 module results → secondary indicators
         ("## 3. Cascade Interaction",
-         _img("fig4_secondary_indicators", "Climate & Resource Stress Indicators")),
+         _img("fig4_secondary_indicators", f"Secondary Indicators — {domain_label}")),
         # After Section 4 MC distribution → boxplot
         ("## 5. Model Limitations",
          _img("fig5_mc_final_distribution", "Monte Carlo Final Distribution — Key Metrics")),

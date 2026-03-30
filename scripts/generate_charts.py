@@ -440,13 +440,14 @@ def _fig5_boxplots(slug: str, mc: dict, plan: dict,
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def generate(slug: str) -> list[pathlib.Path]:
+def generate(slug: str, plan: dict | None = None) -> list[pathlib.Path]:
     """
     Generate all charts for a scenario and return list of written paths.
 
     Parameters
     ----------
     slug : scenario identifier (must match scenarios/{slug}/results.json)
+    plan : optional pre-built chart plan (skips _SCENARIO_PLANS lookup if provided)
 
     Returns
     -------
@@ -457,7 +458,8 @@ def generate(slug: str) -> list[pathlib.Path]:
     mc    = data.get("monte_carlo", {}).get("bands", {})
     n     = max((r["tick"] for series in det.values() for r in series), default=0) + 1
 
-    plan  = _SCENARIO_PLANS.get(slug) or _auto_plan(det, mc)
+    if plan is None:
+        plan = _SCENARIO_PLANS.get(slug) or _auto_plan(det, mc)
     out   = _charts_dir(slug)
 
     written: list[pathlib.Path] = []
