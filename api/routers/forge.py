@@ -504,6 +504,29 @@ async def generate_findings(session_id: str) -> dict:
         for i, t in enumerate(active_snapshot)
     ]
 
+    # Check if a distinct custom ensemble exists
+    _rec_ids  = set(t["theory_id"] for t in (session.recommended_theories or []))
+    _cust_ids = set(t["theory_id"] for t in (session.custom_theories or []))
+    _has_two_ensembles = (
+        session.custom_theories is not None
+        and len(session.custom_theories) > 0
+        and _cust_ids != _rec_ids
+    )
+    # Snapshot the custom ensemble for the background task closure
+    custom_snapshot = list(session.custom_theories) if _has_two_ensembles else []
+
+    def _make_simspec_dict(theories_list: list) -> dict:
+        d = simspec_dict_snapshot.copy()
+        d["theories"] = [
+            {
+                "theory_id": t["theory_id"],
+                "priority":  int(t.get("suggested_priority") or i),
+                "parameters": t.get("parameters") or {},
+            }
+            for i, t in enumerate(theories_list)
+        ]
+        return d
+
     async def _run_findings():
         """Background task — entire body is wrapped so any crash sets status=error."""
         import traceback as _tb
@@ -512,24 +535,65 @@ async def generate_findings(session_id: str) -> dict:
 
             logger.info("Findings task started for session %s", session_id)
 
-            run = SimulationRun(
-                sim_id=str(__import__("uuid").uuid4()),
-                session_id=session_id,
-                ensemble_type="recommended",
-                theory_ids=[t["theory_id"] for t in active_snapshot],
-                status="pending",
-            )
-            _runs[run.sim_id] = run
+            if _has_two_ensembles:
+                # ── Dual-model path ──────────────────────────────────────────
+                spec_a_dict = _make_simspec_dict(active_snapshot)
+                spec_b_dict = _make_simspec_dict(custom_snapshot)
 
-            await asyncio.wait_for(_execute_run(run, simspec_dict_snapshot), timeout=300.0)
+                run_a = SimulationRun(
+                    sim_id=str(__import__("uuid").uuid4()),
+                    session_id=session_id,
+                    ensemble_type="recommended",
+                    theory_ids=[t["theory_id"] for t in active_snapshot],
+                    status="pending",
+                )
+                run_b = SimulationRun(
+                    sim_id=str(__import__("uuid").uuid4()),
+                    session_id=session_id,
+                    ensemble_type="custom",
+                    theory_ids=[t["theory_id"] for t in custom_snapshot],
+                    status="pending",
+                )
+                _runs[run_a.sim_id] = run_a
+                _runs[run_b.sim_id] = run_b
 
-            if run.status != "complete":
-                raise RuntimeError(run.error or "Simulation did not complete")
+                await asyncio.gather(
+                    asyncio.wait_for(_execute_run(run_a, spec_a_dict), timeout=300.0),
+                    asyncio.wait_for(_execute_run(run_b, spec_b_dict), timeout=300.0),
+                )
 
-            logger.info("Sim complete for session %s, generating findings doc", session_id)
+                if run_a.status != "complete":
+                    raise RuntimeError(run_a.error or "Recommended simulation did not complete")
+                if run_b.status != "complete":
+                    raise RuntimeError(run_b.error or "Custom simulation did not complete")
 
-            from forge.findings_generator import generate_findings as _gen
-            md_path, pdf_path = await asyncio.to_thread(_gen, session, run.results)
+                logger.info("Both sims complete for session %s, generating findings doc", session_id)
+
+                from forge.findings_generator import generate_findings as _gen
+                md_path, pdf_path = await asyncio.to_thread(
+                    _gen, session, run_a.results, run_b.results
+                )
+
+            else:
+                # ── Single-model path (original behaviour) ───────────────────
+                run = SimulationRun(
+                    sim_id=str(__import__("uuid").uuid4()),
+                    session_id=session_id,
+                    ensemble_type="recommended",
+                    theory_ids=[t["theory_id"] for t in active_snapshot],
+                    status="pending",
+                )
+                _runs[run.sim_id] = run
+
+                await asyncio.wait_for(_execute_run(run, simspec_dict_snapshot), timeout=300.0)
+
+                if run.status != "complete":
+                    raise RuntimeError(run.error or "Simulation did not complete")
+
+                logger.info("Sim complete for session %s, generating findings doc", session_id)
+
+                from forge.findings_generator import generate_findings as _gen
+                md_path, pdf_path = await asyncio.to_thread(_gen, session, run.results)
 
             session.findings_path       = str(md_path)
             session.findings_job_status = "complete"

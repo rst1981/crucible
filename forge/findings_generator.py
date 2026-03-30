@@ -179,13 +179,157 @@ def _build_chart_plan(
     }
 
 
-def generate_findings(session: "ForgeSession", sim_results: dict) -> tuple[Path, Path]:
+def _generate_comparison_chart(
+    slug: str,
+    metric_series_a: dict,
+    metric_series_b: dict,
+    metric_names: dict,
+    tick_unit: str,
+) -> Path | None:
+    """
+    Generate an overlay chart comparing top-4 metrics from Model A (solid)
+    and Model B (dashed). Saves to scenarios/{slug}/fig_comparison.png.
+    Returns the Path or None on failure.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    # Pick top 4 metrics by variance in model A
+    ranked: list[tuple[float, str]] = []
+    for mid, vals in metric_series_a.items():
+        if not vals:
+            continue
+        try:
+            floats = [float(v) for v in vals]
+            rng = max(floats) - min(floats)
+            ranked.append((rng, mid))
+        except (TypeError, ValueError):
+            pass
+    ranked.sort(reverse=True)
+    top4 = [mid for _, mid in ranked[:4]]
+
+    if not top4:
+        return None
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    axes = axes.flatten()
+
+    colors = [_PALETTE[0], _PALETTE[2], _PALETTE[3], _PALETTE[4]]
+
+    for ax, mid, color in zip(axes, top4, colors):
+        label = metric_names.get(mid, mid.replace("_", " ").replace("__", ": ").title())
+        vals_a = metric_series_a.get(mid, [])
+        vals_b = metric_series_b.get(mid, [])
+        if vals_a:
+            ax.plot(range(len(vals_a)), [float(v) for v in vals_a],
+                    color=color, linewidth=2, linestyle="-", label="Model A (Recommended)")
+        if vals_b:
+            ax.plot(range(len(vals_b)), [float(v) for v in vals_b],
+                    color=color, linewidth=2, linestyle="--", label="Model B (Custom)", alpha=0.8)
+        ax.set_title(label, fontsize=9, fontweight="bold")
+        ax.set_xlabel(tick_unit.capitalize(), fontsize=8)
+        ax.legend(fontsize=7)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.grid(True, alpha=0.25, linestyle="--")
+
+    fig.suptitle("Model Comparison — Recommended vs Custom Ensemble", fontweight="bold", fontsize=11)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+
+    out_dir = Path(__file__).parent.parent / "scenarios" / slug
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "fig_comparison.png"
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return out_path.resolve()
+
+
+def _build_trajectory_table(metric_series: dict, metric_names: dict) -> str:
+    """Build a | Metric | T=0 | ... | Final | Change | trajectory table."""
+    trajectory_rows = []
+    for mid, series in metric_series.items():
+        if not series:
+            continue
+        name = metric_names.get(mid, mid.replace("_", " ").replace("__", ": ").title())
+        n = len(series)
+        vals = {
+            "t0":   series[0],
+            "t25":  series[n // 4],
+            "t50":  series[n // 2],
+            "t75":  series[3 * n // 4],
+            "tfin": series[-1],
+        }
+        delta = vals["tfin"] - vals["t0"]
+        arrow = "▲" if delta > 0.01 else ("▼" if delta < -0.01 else "→")
+        trajectory_rows.append(
+            f"| {name} | {_fmt(vals['t0'])} | {_fmt(vals['t25'])} | "
+            f"{_fmt(vals['t50'])} | {_fmt(vals['t75'])} | {_fmt(vals['tfin'])} | "
+            f"{arrow} {abs(delta):.3f} |"
+        )
+    return (
+        "| Metric | T=0 | T=25% | T=50% | T=75% | Final | Change |\n"
+        "|--------|-----|-------|-------|-------|-------|--------|\n"
+        + "\n".join(trajectory_rows)
+    ) if trajectory_rows else "_No outcome metrics tracked._"
+
+
+def _build_comparison_table(
+    metric_series_a: dict,
+    metric_series_b: dict,
+    metric_names_a: dict,
+    metric_names_b: dict,
+) -> str:
+    """Build a side-by-side comparison table of final values for both models."""
+    all_metrics = sorted(
+        set(metric_series_a.keys()) | set(metric_series_b.keys())
+    )
+    rows = [
+        "| Metric | Model A Final | Model B Final | Delta (B-A) | More Severe |",
+        "|--------|--------------|--------------|-------------|-------------|",
+    ]
+    for mid in all_metrics:
+        series_a = metric_series_a.get(mid, [])
+        series_b = metric_series_b.get(mid, [])
+        val_a = series_a[-1] if series_a else None
+        val_b = series_b[-1] if series_b else None
+        name = (metric_names_a or metric_names_b).get(
+            mid, mid.replace("_", " ").replace("__", ": ").title()
+        )
+        if val_a is None and val_b is None:
+            continue
+        fa = _fmt(val_a) if val_a is not None else "—"
+        fb = _fmt(val_b) if val_b is not None else "—"
+        if val_a is not None and val_b is not None:
+            try:
+                delta = float(val_b) - float(val_a)
+                delta_str = f"{delta:+.3f}"
+                # "More severe" is whichever has larger absolute deviation from 0.5
+                # (lower is worse for stability metrics, higher for risk metrics —
+                # we use absolute deviation as a proxy)
+                more = "Model B" if abs(float(val_b) - 0.5) > abs(float(val_a) - 0.5) else "Model A"
+            except (TypeError, ValueError):
+                delta_str = "—"
+                more = "—"
+        else:
+            delta_str = "—"
+            more = "—"
+        rows.append(f"| {name} | {fa} | {fb} | {delta_str} | {more} |")
+    return "\n".join(rows)
+
+
+def generate_findings(
+    session: "ForgeSession",
+    sim_results: dict,
+    sim_results_b: dict | None = None,
+) -> tuple[Path, Path]:
     """
     Generate a findings document from a completed simulation run.
 
     Args:
-        session:     The ForgeSession with full SimSpec and research context.
-        sim_results: The results dict from _execute_run.
+        session:       The ForgeSession with full SimSpec and research context.
+        sim_results:   The results dict from _execute_run (Model A / Recommended).
+        sim_results_b: Optional results for a second ensemble (Model B / Custom).
 
     Returns:
         (md_path, pdf_path)
@@ -210,38 +354,43 @@ def generate_findings(session: "ForgeSession", sim_results: dict) -> tuple[Path,
     end_date   = (spec.metadata or {}).get("end_date", "")
 
     # Full metric trajectory: tick 0, 25%, 50%, 75%, final
-    trajectory_rows = []
-    for mid, series in metric_series.items():
-        if not series:
-            continue
-        name = metric_names.get(mid, mid.replace("_", " ").replace("__", ": ").title())
-        n = len(series)
-        vals = {
-            "t0":   series[0],
-            "t25":  series[n // 4],
-            "t50":  series[n // 2],
-            "t75":  series[3 * n // 4],
-            "tfin": series[-1],
-        }
-        delta = vals["tfin"] - vals["t0"]
-        arrow = "▲" if delta > 0.01 else ("▼" if delta < -0.01 else "→")
-        trajectory_rows.append(
-            f"| {name} | {_fmt(vals['t0'])} | {_fmt(vals['t25'])} | "
-            f"{_fmt(vals['t50'])} | {_fmt(vals['t75'])} | {_fmt(vals['tfin'])} | "
-            f"{arrow} {abs(delta):.3f} |"
-        )
+    trajectory_table = _build_trajectory_table(metric_series, metric_names)
 
-    trajectory_table = (
-        "| Metric | T=0 | T=25% | T=50% | T=75% | Final | Change |\n"
-        "|--------|-----|-------|-------|-------|-------|--------|\n"
-        + "\n".join(trajectory_rows)
-    ) if trajectory_rows else "_No outcome metrics tracked._"
+    # Model B data (if present)
+    _dual = sim_results_b is not None
+    if _dual:
+        metric_series_b = sim_results_b.get("metric_series", {})
+        metric_names_b  = sim_results_b.get("metric_names", {})
+        theory_ids_b    = sim_results_b.get("theory_ids", [])
+        trajectory_table_b = _build_trajectory_table(metric_series_b, metric_names_b)
+        comparison_table   = _build_comparison_table(
+            metric_series, metric_series_b, metric_names, metric_names_b
+        )
+    else:
+        metric_series_b = {}
+        metric_names_b  = {}
+        theory_ids_b    = []
+        trajectory_table_b = ""
+        comparison_table   = ""
 
     # Final environment — top 40 keys alphabetically
     env_table = "| Key | Final Value |\n|-----|-------------|\n" + "\n".join(
         f"| `{k}` | {_fmt(v)} |"
         for k, v in sorted(final_env.items())[:40]
     )
+
+    # ── Dual-model trajectory block for prompt ───────────────────────────────
+    if _dual:
+        dual_trajectory_block = (
+            f"\n### Model A (Recommended Ensemble) — Metric Trajectories\n"
+            f"{trajectory_table}\n\n"
+            f"### Model B (Custom Ensemble) — Metric Trajectories\n"
+            f"{trajectory_table_b}\n\n"
+            f"### Model Comparison — Final Values\n"
+            f"{comparison_table}\n"
+        )
+    else:
+        dual_trajectory_block = ""
 
     # Shock schedule from simspec (scheduled_shocks: {tick: {env_key: delta}})
     shocks_text = ""
@@ -310,6 +459,51 @@ def generate_findings(session: "ForgeSession", sim_results: dict) -> tuple[Path,
         "Every section must contain real insights tied to actual simulation outputs."
     )
 
+    # Dual-model theory diff for prompt
+    if _dual:
+        ids_a = set(theory_ids)
+        ids_b = set(theory_ids_b)
+        shared   = sorted(ids_a & ids_b)
+        only_a   = sorted(ids_a - ids_b)
+        only_b   = sorted(ids_b - ids_a)
+        theory_diff_block = (
+            f"\n### Theory Ensemble Difference\n"
+            f"| Category | Theories |\n"
+            f"|----------|---------|\n"
+            f"| Shared | {', '.join(shared) or '—'} |\n"
+            f"| Only in Model A (Recommended) | {', '.join(only_a) or '—'} |\n"
+            f"| Only in Model B (Custom) | {', '.join(only_b) or '—'} |\n"
+        )
+        model_comparison_section = f"""
+## 7. Model Comparison
+
+### Theory Ensemble Difference
+| Theory | Model A | Model B |
+|--------|---------|---------|
+{"".join(f"| {t} | ✓ | ✓ |" + chr(10) for t in shared)}{"".join(f"| {t} | ✓ |  |" + chr(10) for t in only_a)}{"".join(f"| {t} |  | ✓ |" + chr(10) for t in only_b)}
+
+### Outcome Divergence
+{comparison_table}
+
+### Key Finding
+{{Which ensemble produces worse stress? Why do they diverge? What does the difference tell the client?}}
+"""
+        model_comparison_instruction = f"""
+---
+
+{model_comparison_section}
+"""
+        dual_exec_summary_addon = f"""
+### Model Comparison Summary
+| Outcome | Model A (Recommended) | Model B (Custom) | More Conservative |
+|---------|----------------------|-----------------|-------------------|
+{{3–5 rows using real final values from the comparison table above}}
+"""
+    else:
+        theory_diff_block = ""
+        model_comparison_instruction = ""
+        dual_exec_summary_addon = ""
+
     prompt = f"""Write a complete simulation findings document. Follow the EXACT structure below.
 All numbers must come from the simulation data. Do not use placeholder text.
 
@@ -323,11 +517,12 @@ All numbers must come from the simulation data. Do not use placeholder text.
 **Timeframe:** {ticks} {tick_unit}s | Start: {start_date} | End: {end_date}
 **Outcome Focus:** {outcome_focus}
 **Client type:** {client_type}
-**Theories active:** {', '.join(theory_ids) or 'none'}
+**Model A (Recommended) theories:** {', '.join(theory_ids) or 'none'}
+{f'**Model B (Custom) theories:** {chr(44).join(theory_ids_b) or "none"}' if _dual else ''}
 **Actors:** {', '.join(a.name for a in spec.actors[:8])}
 
 ### Metric Trajectories (T=0, 25%, 50%, 75%, Final)
-{trajectory_table}
+{trajectory_table if not _dual else dual_trajectory_block}
 
 ### Final Environment State
 {env_table}
@@ -345,6 +540,7 @@ All numbers must come from the simulation data. Do not use placeholder text.
 
 ### Research Grounding
 {research_summary or 'No external research available.'}
+{theory_diff_block}
 
 ---
 
@@ -389,6 +585,7 @@ Write the document using EXACTLY these sections, in this order:
 | Bear ({{N}}%) | ... | ... | ... |
 
 **Key finding:** {{1–2 sentences on the most important MC or scenario finding.}}
+{dual_exec_summary_addon}
 
 ---
 
@@ -464,7 +661,7 @@ Write the document using EXACTLY these sections, in this order:
 | Module | Key Parameters Used | Calibration Source |
 |--------|--------------------|--------------------|
 {{One row per theory with the key parameter values actually used}}
-"""
+{model_comparison_instruction}"""
 
     resp = client.messages.create(
         model="claude-sonnet-4-6",
@@ -495,6 +692,18 @@ Write the document using EXACTLY these sections, in this order:
             "final_env": final_env,
         }
 
+        # Include Model B series in results.json under "comparison" key
+        if _dual:
+            det_series_b: dict = {}
+            for mid, vals in metric_series_b.items():
+                det_series_b[mid] = [{"tick": i, "value": float(v)} for i, v in enumerate(vals)]
+            results_for_charts["comparison"] = {
+                "det_series_a": det_series,
+                "det_series_b": det_series_b,
+                "theory_ids_a": theory_ids,
+                "theory_ids_b": theory_ids_b,
+            }
+
         scenarios_dir = Path(__file__).parent.parent / "scenarios" / slug
         scenarios_dir.mkdir(parents=True, exist_ok=True)
         results_json = scenarios_dir / "results.json"
@@ -509,6 +718,18 @@ Write the document using EXACTLY these sections, in this order:
         for p in generated:
             chart_paths[p.stem] = p.resolve()
         logger.info("Generated %d charts for %s", len(generated), slug)
+
+        # ── Comparison chart (dual-model overlay) ────────────────────────────
+        if _dual:
+            try:
+                _comparison_chart_path = _generate_comparison_chart(
+                    slug, metric_series, metric_series_b, metric_names, tick_unit
+                )
+                if _comparison_chart_path:
+                    chart_paths["fig_comparison"] = _comparison_chart_path
+            except Exception as cmp_exc:
+                logger.warning("Comparison chart generation failed: %s", cmp_exc)
+
     except Exception as exc:
         logger.warning("Chart generation failed (findings will have no images): %s", exc)
 
@@ -538,6 +759,13 @@ Write the document using EXACTLY these sections, in this order:
         ("## 5. Model Limitations",
          _img("fig5_mc_final_distribution", "Monte Carlo Final Distribution — Key Metrics")),
     ]
+
+    # Dual-model: inject comparison chart after "## 7. Model Comparison"
+    if _dual:
+        injections.append((
+            "### Key Finding",
+            _img("fig_comparison", "Model Comparison — Recommended vs Custom Ensemble"),
+        ))
 
     for marker, img_block in injections:
         if img_block and marker in md_content:
