@@ -141,6 +141,7 @@ class ForgeSession:
     custom_theories:      list[dict] | None = None   # None = not yet customized
     deep_dive_complete:   bool              = False  # True after outcome_focus deep-dive has run
     assessment_path:      str | None       = None   # path to generated assessment .md
+    assessment_md:        str | None       = None   # full MD content stored for Railway (filesystem ephemeral)
     findings_path:        str | None       = None   # path to generated findings .md
     findings_md:          str | None       = None   # full MD content stored for Railway (filesystem ephemeral)
     findings_job_status:  str              = "not_started"  # "not_started"|"running"|"complete"|"error"
@@ -194,6 +195,7 @@ class ForgeSession:
             ],
             "research":              self.research_context.to_dict(),
             "assessment_path":       self.assessment_path,
+            "assessment_md":         self.assessment_md,
             "findings_path":         self.findings_path,
             "findings_md":           self.findings_md,
             "findings_job_status":   self.findings_job_status,

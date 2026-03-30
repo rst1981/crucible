@@ -68,6 +68,7 @@ async def _load_sessions() -> None:
             session.discovered_theories  = data.get("discovered_theories", [])
             session.custom_theories      = data.get("custom_theories")
             session.assessment_path      = data.get("assessment_path")
+            session.assessment_md        = data.get("assessment_md")
             session.findings_path        = data.get("findings_path")
             session.findings_md          = data.get("findings_md")
             # If a job was "running" when the container died, mark it failed so
@@ -393,6 +394,10 @@ async def generate_assessment(session_id: str) -> dict:
         from forge.assessment_generator import generate_assessment as _gen
         md_path, pdf_path = await asyncio.to_thread(_gen, session)
         session.assessment_path = str(md_path)
+        try:
+            session.assessment_md = md_path.read_text(encoding="utf-8")
+        except Exception:
+            pass
         _save_session(session)
         return {
             "session_id":   session_id,
@@ -409,21 +414,59 @@ async def generate_assessment(session_id: str) -> dict:
 @router.get("/intake/{session_id}/assessment/download")
 async def download_assessment(session_id: str, fmt: str = "pdf"):
     """Download the assessment PDF or MD for a session."""
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, Response
     session = _get_session(session_id)
-    if not session.assessment_path:
+    if not session.assessment_path and not session.assessment_md:
         raise HTTPException(status_code=404, detail="Assessment not yet generated")
-    md_path = pathlib.Path(session.assessment_path)
+
+    md_path = pathlib.Path(session.assessment_path) if session.assessment_path else None
+
+    # Reconstruct MD from DB if filesystem was wiped (Railway ephemeral)
+    if md_path and not md_path.exists() and session.assessment_md:
+        try:
+            md_path.parent.mkdir(parents=True, exist_ok=True)
+            md_path.write_text(session.assessment_md, encoding="utf-8")
+        except Exception:
+            pass
+
+    # If still no file, serve MD content directly from DB
+    if not md_path or not md_path.exists():
+        if session.assessment_md:
+            if fmt == "md":
+                name = f"{(session.simspec.name or session_id).replace(' ', '-')}-assessment.md"
+                return Response(session.assessment_md, media_type="text/markdown",
+                                headers={"Content-Disposition": f'attachment; filename="{name}"'})
+            # Regenerate PDF from stored MD
+            try:
+                import tempfile
+                from scripts.md_to_pdf import convert
+                with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="w", encoding="utf-8") as f:
+                    f.write(session.assessment_md)
+                    tmp_md = pathlib.Path(f.name)
+                pdf_path = await asyncio.to_thread(convert, tmp_md, True)
+                name = f"{(session.simspec.name or session_id).replace(' ', '-')}-assessment.pdf"
+                return FileResponse(pdf_path, media_type="application/pdf", filename=name)
+            except Exception:
+                name = f"{(session.simspec.name or session_id).replace(' ', '-')}-assessment.md"
+                return Response(session.assessment_md, media_type="text/markdown",
+                                headers={"Content-Disposition": f'attachment; filename="{name}"'})
+        raise HTTPException(status_code=404, detail="Assessment file not found on server")
+
     pdf_path = md_path.with_suffix(".pdf")
     if fmt == "md":
         path = md_path
         media_type = "text/markdown"
     else:
+        if not pdf_path.exists() and session.assessment_md:
+            try:
+                from scripts.md_to_pdf import convert
+                pdf_path = await asyncio.to_thread(convert, md_path, True)
+            except Exception:
+                pass
         path = pdf_path if pdf_path.exists() else md_path
         media_type = "application/pdf" if path.suffix == ".pdf" else "text/markdown"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Assessment file not found on server")
-    filename = f"{session.simspec.name or session_id}-assessment{path.suffix}".replace(" ", "-")
+
+    filename = f"{(session.simspec.name or session_id).replace(' ', '-')}-assessment{path.suffix}"
     return FileResponse(path, media_type=media_type, filename=filename)
 
 
