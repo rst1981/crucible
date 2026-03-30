@@ -558,8 +558,8 @@ async def generate_findings(session_id: str) -> dict:
                 _runs[run_b.sim_id] = run_b
 
                 await asyncio.gather(
-                    asyncio.wait_for(_execute_run(run_a, spec_a_dict), timeout=300.0),
-                    asyncio.wait_for(_execute_run(run_b, spec_b_dict), timeout=300.0),
+                    asyncio.wait_for(_execute_run(run_a, spec_a_dict), timeout=900.0),
+                    asyncio.wait_for(_execute_run(run_b, spec_b_dict), timeout=900.0),
                 )
 
                 if run_a.status != "complete":
@@ -585,7 +585,7 @@ async def generate_findings(session_id: str) -> dict:
                 )
                 _runs[run.sim_id] = run
 
-                await asyncio.wait_for(_execute_run(run, simspec_dict_snapshot), timeout=300.0)
+                await asyncio.wait_for(_execute_run(run, simspec_dict_snapshot), timeout=900.0)
 
                 if run.status != "complete":
                     raise RuntimeError(run.error or "Simulation did not complete")

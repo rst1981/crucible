@@ -246,17 +246,36 @@ def _auto_plan(det_series: dict, mc_bands: dict) -> dict:
 
 def _fig1_dashboard(slug: str, det: dict, mc: dict, plan: dict,
                     n: int, out: pathlib.Path) -> pathlib.Path:
-    """2×2 panel: financial metrics with MC bands."""
-    metrics = plan["financial_metrics"]
-    months  = list(range(n))
+    """Adaptive panel layout: 1–4 metrics with MC bands. Never leaves empty panels."""
+    metrics = plan["financial_metrics"] or []
+    if not metrics:
+        return None
+    months    = list(range(n))
     tick_unit = plan["tick_unit"]
+    m         = len(metrics)
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 7), constrained_layout=True)
+    # Choose grid: 1→(1,1), 2→(1,2), 3→(1,3), 4→(2,2)
+    if m == 1:
+        nrows, ncols = 1, 1
+    elif m == 2:
+        nrows, ncols = 1, 2
+    elif m == 3:
+        nrows, ncols = 1, 3
+    else:
+        nrows, ncols = 2, 2
+
+    fig_w = max(7, ncols * 6)
+    fig_h = max(4, nrows * 4)
+    fig, axes_obj = plt.subplots(nrows, ncols, figsize=(fig_w, fig_h), constrained_layout=True)
+    # Normalise axes to a flat list regardless of shape
+    import numpy as np
+    axes_flat = np.array(axes_obj).flatten().tolist()
+
     fig.suptitle(f"{slug.replace('-', ' ').title()} — Key Metrics Dashboard\n"
                  f"{n}-Tick Deterministic Run + MC Bands",
                  fontsize=13, fontweight="bold", y=1.01)
 
-    for (key, title, color), ax in zip(metrics, axes.flat):
+    for (key, title, color), ax in zip(metrics, axes_flat):
         s = _extract_series(det, key, n)
         if key in mc:
             b = mc[key]
@@ -274,7 +293,7 @@ def _fig1_dashboard(slug: str, det: dict, mc: dict, plan: dict,
             ax.text(1, plan["covenant_threshold"] + 0.01, "Covenant risk",
                     fontsize=7, color=PALETTE[2])
 
-    axes[1, 0].legend(fontsize=7, loc="best")
+    axes_flat[0].legend(fontsize=7, loc="best")
     path = out / "fig1_metrics_dashboard.png"
     fig.savefig(path, **STYLE)
     plt.close(fig)
@@ -438,11 +457,346 @@ def _fig5_boxplots(slug: str, mc: dict, plan: dict,
     return path
 
 
+def _fig6_env_heatmap(slug: str, det: dict, plan: dict, n: int, out: pathlib.Path) -> pathlib.Path:
+    """
+    Heat map of all tracked metrics across all ticks.
+    Rows = metrics (sorted by final value), columns = ticks.
+    Color = normalized value [0-1]. Reveals emergence: correlated rows show cascade coupling.
+    """
+    import numpy as np
+    keys = list(det.keys())
+    if not keys:
+        return None
+
+    # Build matrix: rows=metrics, cols=ticks
+    matrix = np.zeros((len(keys), n))
+    for i, key in enumerate(keys):
+        vals = _extract_series(det, key, n)
+        matrix[i, :] = vals
+
+    # Sort rows by final column value descending
+    sort_idx = np.argsort(matrix[:, -1])[::-1]
+    matrix = matrix[sort_idx]
+    sorted_keys = [keys[i] for i in sort_idx]
+    labels = [k.split("__")[-1].replace("_", " ")[:18] for k in sorted_keys]
+
+    fig_h = max(4, len(keys) * 0.35)
+    fig, ax = plt.subplots(figsize=(13, fig_h), constrained_layout=True)
+    im = ax.imshow(matrix, aspect="auto", cmap="RdYlGn", vmin=0, vmax=1,
+                   interpolation="nearest")
+    ax.set_yticks(range(len(labels)))
+    ax.set_yticklabels(labels, fontsize=max(6, min(9, 120 // len(labels))))
+    ax.set_xlabel("Tick", fontsize=10)
+    ax.set_title("Environment State Heatmap — All Metrics × All Ticks\n"
+                 "(green=high, red=low; correlated rows = cascade coupling)",
+                 fontsize=11, fontweight="bold")
+
+    # Add shock lines
+    for t in plan.get("shocks", {}):
+        ax.axvline(t, color="white", lw=0.8, alpha=0.5, ls="--")
+
+    plt.colorbar(im, ax=ax, fraction=0.02, pad=0.02, label="Normalized value [0–1]")
+
+    # Year labels on x-axis
+    tick_unit = plan.get("tick_unit", "month")
+    step = 12 if tick_unit == "month" else (4 if tick_unit == "quarter" else max(1, n // 10))
+    xticks = list(range(0, n, step))
+    ax.set_xticks(xticks)
+    ax.set_xticklabels([f"Y{t // step}" for t in xticks], fontsize=8)
+
+    path = out / "fig6_env_heatmap.png"
+    fig.savefig(path, **STYLE)
+    plt.close(fig)
+    return path
+
+
+def _fig7_theory_contributions(slug: str, theory_contribs: list[dict], n: int,
+                                out: pathlib.Path) -> pathlib.Path:
+    """
+    Stacked area chart of per-theory total delta magnitude per tick.
+    Shows which theories dominate during each phase — ABM attribution chart.
+    """
+    if not theory_contribs:
+        return None
+
+    import numpy as np
+    from collections import defaultdict
+
+    # Aggregate total_delta per tick per theory_id
+    by_theory: dict[str, list[float]] = defaultdict(lambda: [0.0] * n)
+    theory_ids: set[str] = set()
+    for rec in theory_contribs:
+        tick = rec.get("tick", 0)
+        tid  = rec.get("theory_id", "unknown")
+        delta = rec.get("total_delta", 0.0)
+        if tick < n:
+            by_theory[tid][tick] += delta
+            theory_ids.add(tid)
+
+    if not theory_ids:
+        return None
+
+    # Sort theories by total contribution descending
+    tids = sorted(theory_ids, key=lambda t: sum(by_theory[t]), reverse=True)[:8]
+    ticks = list(range(n))
+
+    fig, ax = plt.subplots(figsize=(12, 5), constrained_layout=True)
+    bottom = np.zeros(n)
+    for i, tid in enumerate(tids):
+        vals = np.array(by_theory[tid])
+        label = tid.replace("_", " ").title()[:28]
+        ax.fill_between(ticks, bottom, bottom + vals,
+                        color=PALETTE[i % len(PALETTE)], alpha=0.75, label=label)
+        bottom += vals
+
+    ax.set_ylabel("Total Theory Write Magnitude (Σ|Δenv|)", fontsize=10)
+    ax.set_xlabel("Tick", fontsize=10)
+    ax.set_title("Theory Contribution per Tick — Mechanism Attribution\n"
+                 "(stacked: which theory drove most state change each tick)",
+                 fontsize=11, fontweight="bold")
+    ax.legend(loc="upper right", fontsize=7, ncol=2)
+
+    path = out / "fig7_theory_contributions.png"
+    fig.savefig(path, **STYLE)
+    plt.close(fig)
+    return path
+
+
+def _fig8_phase_space(slug: str, det: dict, mc: dict, plan: dict,
+                      n: int, out: pathlib.Path) -> pathlib.Path:
+    """
+    2D phase space: top-2 metrics against each other, colored by tick.
+    MC cloud (final-tick p25–p75 ellipse) overlaid on deterministic path.
+    Reveals attractor dynamics, phase transitions, regime shifts.
+    """
+    import numpy as np
+
+    metrics = plan.get("financial_metrics", [])
+    if len(metrics) < 2:
+        return None
+
+    key_x, lbl_x, _ = metrics[0]
+    key_y, lbl_y, _ = metrics[1]
+
+    sx = _extract_series(det, key_x, n)
+    sy = _extract_series(det, key_y, n)
+
+    fig, ax = plt.subplots(figsize=(8, 7), constrained_layout=True)
+
+    # Plot trajectory colored by time
+    cmap = plt.get_cmap("plasma")
+    for t in range(n - 1):
+        color = cmap(t / max(n - 1, 1))
+        ax.plot([sx[t], sx[t+1]], [sy[t], sy[t+1]], color=color, lw=1.5, alpha=0.8)
+
+    # MC uncertainty cloud at final tick
+    if key_x in mc and key_y in mc:
+        bx = mc[key_x]
+        by = mc[key_y]
+        # Draw a box from p25-p75 at final tick
+        x25, x75 = bx["p25"][-1], bx["p75"][-1]
+        y25, y75 = by["p25"][-1], by["p75"][-1]
+        from matplotlib.patches import FancyBboxPatch
+        rect = FancyBboxPatch((x25, y25), x75 - x25, y75 - y25,
+                              boxstyle="round,pad=0.01",
+                              linewidth=1.5, edgecolor="#7C3AED",
+                              facecolor="#7C3AED", alpha=0.12)
+        ax.add_patch(rect)
+        ax.annotate("MC p25–p75\nat final tick", xy=(x75, y75),
+                    fontsize=8, color="#7C3AED", ha="left")
+
+    # Mark start and end
+    ax.plot(sx[0], sy[0], "o", color="#16A34A", ms=10, zorder=5, label="Start (tick 0)")
+    ax.plot(sx[-1], sy[-1], "s", color="#DC2626", ms=10, zorder=5,
+            label=f"End (tick {n-1})")
+
+    # Colorbar for time
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=0, vmax=n-1))
+    sm.set_array([])
+    plt.colorbar(sm, ax=ax, fraction=0.04, pad=0.04, label="Tick")
+
+    ax.set_xlabel(lbl_x, fontsize=11)
+    ax.set_ylabel(lbl_y, fontsize=11)
+    ax.set_title(f"Phase Space Trajectory: {lbl_x} vs {lbl_y}\n"
+                 f"(path colored by time; purple box = MC uncertainty at final tick)",
+                 fontsize=11, fontweight="bold")
+    ax.legend(loc="upper left", fontsize=9)
+
+    path = out / "fig8_phase_space.png"
+    fig.savefig(path, **STYLE)
+    plt.close(fig)
+    return path
+
+
+def _fig9_uncertainty_decomp(slug: str, mc: dict, n: int, out: pathlib.Path) -> pathlib.Path:
+    """
+    Horizontal bar chart: p95-p5 spread per metric at final tick, sorted descending.
+    Shows which state variables have the most emergent uncertainty — key for
+    identifying the model's most sensitive dimensions.
+    """
+    bands = mc if isinstance(mc, dict) else {}
+    if not bands:
+        return None
+
+    items: list[tuple[float, str]] = []
+    for mid, band in bands.items():
+        p5  = band.get("p5",  [None])
+        p95 = band.get("p95", [None])
+        if p5 and p95 and p5[-1] is not None and p95[-1] is not None:
+            spread = float(p95[-1]) - float(p5[-1])
+            label  = mid.split("__")[-1].replace("_", " ").title()[:30]
+            items.append((spread, label))
+
+    if not items:
+        return None
+
+    items.sort(reverse=True)
+    items = items[:15]  # top 15
+
+    spreads = [s for s, _ in items]
+    labels  = [l for _, l in items]
+    colors  = [PALETTE[i % len(PALETTE)] for i in range(len(items))]
+
+    fig, ax = plt.subplots(figsize=(9, max(4, len(items) * 0.45)), constrained_layout=True)
+    bars = ax.barh(labels, spreads, color=colors, alpha=0.8)
+    ax.set_xlabel("p95 – p5 spread at final tick", fontsize=10)
+    ax.set_title("MC Uncertainty Decomposition — Sensitivity by State Variable\n"
+                 "(width = 90% confidence interval; wider = more uncertain outcome)",
+                 fontsize=11, fontweight="bold")
+    ax.set_xlim(0, max(spreads) * 1.15)
+    for bar, val in zip(bars, spreads):
+        ax.text(val + max(spreads) * 0.01, bar.get_y() + bar.get_height() / 2,
+                f"{val:.3f}", va="center", fontsize=8)
+
+    path = out / "fig9_uncertainty_decomp.png"
+    fig.savefig(path, **STYLE)
+    plt.close(fig)
+    return path
+
+
+def _fig10_mc_convergence(slug: str, mc_run_finals: list[dict],
+                           mc_fan_metric: str | None,
+                           out: pathlib.Path) -> pathlib.Path:
+    """
+    Running p50 estimate as N_runs increases (sub-sampled every 10 runs).
+    Flat line = 300 runs was sufficient. Shows simulation sample efficiency.
+    """
+    if not mc_run_finals or not mc_fan_metric:
+        return None
+
+    vals = [r.get(mc_fan_metric) for r in mc_run_finals if r.get(mc_fan_metric) is not None]
+    if len(vals) < 20:
+        return None
+
+    import numpy as np
+    checkpoints = list(range(10, len(vals) + 1, 10))
+    running_p50 = [float(np.median(vals[:k])) for k in checkpoints]
+    running_p5  = [float(np.percentile(vals[:k],  5)) for k in checkpoints]
+    running_p95 = [float(np.percentile(vals[:k], 95)) for k in checkpoints]
+
+    label = mc_fan_metric.split("__")[-1].replace("_", " ").title()[:40]
+
+    fig, ax = plt.subplots(figsize=(9, 4.5), constrained_layout=True)
+    ax.fill_between(checkpoints, running_p5, running_p95,
+                    alpha=0.2, color=PALETTE[3], label="p5–p95 running CI")
+    ax.plot(checkpoints, running_p50, color=PALETTE[3], lw=2.2, label="Running p50")
+    ax.axhline(running_p50[-1], color="#9CA3AF", lw=1, ls="--", alpha=0.7)
+    ax.set_xlabel("MC Runs Completed", fontsize=10)
+    ax.set_ylabel(label, fontsize=10)
+    ax.set_title(f"Monte Carlo Convergence — {label}\n"
+                 f"(flatness confirms 300-run sample size is sufficient)",
+                 fontsize=11, fontweight="bold")
+    ax.legend(loc="best", fontsize=9)
+
+    path = out / "fig10_mc_convergence.png"
+    fig.savefig(path, **STYLE)
+    plt.close(fig)
+    return path
+
+
+def _fig11_agent_beliefs(slug: str, env_snapshots: list[dict],
+                          plan: dict, out: pathlib.Path) -> pathlib.Path:
+    """
+    Multi-panel chart of full environment state at each snapshot tick.
+    Each snapshot is a horizontal bar showing all env keys — reveals
+    how the global state vector shifts over the simulation lifetime.
+    Approximates agent belief convergence (agents observe this env).
+    """
+    if not env_snapshots or len(env_snapshots) < 2:
+        return None
+
+    import numpy as np
+
+    # Use up to 6 evenly spaced snapshots
+    snaps = env_snapshots
+    if len(snaps) > 6:
+        idx = [int(i * (len(snaps) - 1) / 5) for i in range(6)]
+        snaps = [snaps[i] for i in idx]
+
+    # Collect all env keys from all snapshots
+    all_keys: list[str] = []
+    seen: set[str] = set()
+    for snap in snaps:
+        for k in (snap.get("env") or {}).keys():
+            if k not in seen:
+                all_keys.append(k)
+                seen.add(k)
+    if not all_keys:
+        return None
+
+    # Sort keys by range across snapshots
+    key_ranges = []
+    for k in all_keys:
+        vals = [snap["env"].get(k, 0.0) for snap in snaps]
+        key_ranges.append((max(vals) - min(vals), k))
+    key_ranges.sort(reverse=True)
+    top_keys = [k for _, k in key_ranges[:20]]
+    labels = [k.split("__")[-1].replace("_", " ")[:18] for k in top_keys]
+
+    n_snaps = len(snaps)
+    n_keys  = len(top_keys)
+    matrix  = np.zeros((n_keys, n_snaps))
+    for j, snap in enumerate(snaps):
+        env = snap.get("env") or {}
+        for i, k in enumerate(top_keys):
+            matrix[i, j] = env.get(k, 0.0)
+
+    fig, ax = plt.subplots(figsize=(max(8, n_snaps * 1.5), max(4, n_keys * 0.45)),
+                           constrained_layout=True)
+    im = ax.imshow(matrix, aspect="auto", cmap="RdYlGn", vmin=0, vmax=1,
+                   interpolation="nearest")
+    ax.set_yticks(range(n_keys))
+    ax.set_yticklabels(labels, fontsize=max(7, min(10, 180 // n_keys)))
+    tick_labels = [f"T{snap['tick']}" for snap in snaps]
+    ax.set_xticks(range(n_snaps))
+    ax.set_xticklabels(tick_labels, fontsize=9)
+    ax.set_title("Agent Observable State — Environment Snapshots\n"
+                 "(each column = full env state agents observed at that tick; "
+                 "green=high, red=low)",
+                 fontsize=11, fontweight="bold")
+    plt.colorbar(im, ax=ax, fraction=0.03, pad=0.02, label="Value [0–1]")
+
+    path = out / "fig11_agent_state_snapshots.png"
+    fig.savefig(path, **STYLE)
+    plt.close(fig)
+    return path
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def generate(slug: str, plan: dict | None = None) -> list[pathlib.Path]:
+def generate(slug: str, plan: dict | None = None,
+             theory_contributions: list | None = None,
+             env_snapshots: list | None = None,
+             mc_run_finals: list | None = None) -> list[pathlib.Path]:
     """
-    Generate all charts for a scenario and return list of written paths.
+    Generate the standard 5-chart set for a scenario and return list of written paths.
+
+    Charts produced:
+      fig1 — Key metrics dashboard (4 panels with MC bands)
+      fig2 — Shock cascade (all primary metrics + shock annotations)
+      fig3 — MC fan chart (primary metric with p5/p25/p50/p75/p95 bands)
+      fig4 — Secondary indicators (domain-specific: climate, resource, narrative)
+      fig5 — MC final distribution (boxplots at last tick)
 
     Parameters
     ----------
@@ -464,11 +818,11 @@ def generate(slug: str, plan: dict | None = None) -> list[pathlib.Path]:
 
     written: list[pathlib.Path] = []
     generators = [
-        (_fig1_dashboard, (slug, det, mc, plan, n, out)),
-        (_fig2_cascade,   (slug, det,     plan, n, out)),
-        (_fig3_mc_fan,    (slug, det, mc, plan, n, out)),
-        (_fig4_secondary, (slug, det,     plan, n, out)),
-        (_fig5_boxplots,  (slug,      mc, plan, n, out)),
+        (_fig1_dashboard,  (slug, det, mc, plan, n, out)),
+        (_fig2_cascade,    (slug, det,     plan, n, out)),
+        (_fig3_mc_fan,     (slug, det, mc, plan, n, out)),
+        (_fig4_secondary,  (slug, det,     plan, n, out)),
+        (_fig5_boxplots,   (slug,      mc, plan, n, out)),
     ]
     for fn, args in generators:
         try:

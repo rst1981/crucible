@@ -115,13 +115,50 @@ def _build_chart_plan(
         lbl = _label(mid)
         return lbl[:14] if len(lbl) > 14 else lbl
 
-    # Top 4 go into dashboard + cascade panels
+    # ── MC spread ranking ─────────────────────────────────────────────────────
+    # Build a spread score per metric from MC bands (p95-p5 at final tick).
+    # When MC data is available, prefer highest-spread metrics in prominent panels.
+    bands = monte_carlo.get("bands", {})
+    mc_spread: dict[str, float] = {}
+    for mid, band in bands.items():
+        p5  = band.get("p5",  [None])
+        p95 = band.get("p95", [None])
+        if p5 and p95 and p5[-1] is not None and p95[-1] is not None:
+            mc_spread[mid] = float(p95[-1]) - float(p5[-1])
+
+    # Re-rank top_ids: metrics with MC spread first (by spread desc), then by
+    # deterministic variance for any metrics not in MC bands.
+    if mc_spread:
+        mc_ranked = sorted(
+            [mid for mid in top_ids if mid in mc_spread],
+            key=lambda m: mc_spread[m],
+            reverse=True,
+        )
+        non_mc = [mid for mid in top_ids if mid not in mc_spread]
+        top_ids = mc_ranked + non_mc
+
+    # MC fan: highest spread metric gets the dedicated fan chart
+    mc_fan_metric = top_ids[0] if top_ids else None
+    mc_fan_label  = _label(mc_fan_metric) if mc_fan_metric else "Primary Metric"
+    if mc_spread:
+        best_mid = max(mc_spread, key=mc_spread.get)
+        mc_fan_metric = best_mid
+        mc_fan_label  = _label(best_mid)
+
+    # Fan chart reference line: p50 at tick 0 (starting midpoint)
+    mc_fan_threshold = None
+    if mc_fan_metric and bands.get(mc_fan_metric, {}).get("p50"):
+        p50_start = bands[mc_fan_metric]["p50"][0]
+        mc_fan_threshold = (float(p50_start), f"Starting median ({p50_start:.2f})")
+
+    # Top 4 for dashboard + cascade — after re-ranking, these are now the most
+    # uncertain metrics when MC data is present
     fin_metrics = [
         (mid, _label(mid), _PALETTE[i % len(_PALETTE)])
         for i, mid in enumerate(top_ids[:4])
     ]
 
-    # Next 4 go into secondary-indicators panel (split left/right)
+    # Refresh secondary panels with re-ranked order
     secondary = top_ids[4:8] if len(top_ids) > 4 else top_ids[:4]
     mid_split = len(secondary) // 2
     climate_left = [
@@ -133,22 +170,8 @@ def _build_chart_plan(
         for i, mid in enumerate(secondary[mid_split or 1:])
     ]
 
-    # MC fan: pick the metric with largest p95-p5 spread at final tick
-    mc_fan_metric = top_ids[0] if top_ids else None
-    mc_fan_label = _label(mc_fan_metric) if mc_fan_metric else "Primary Metric"
-    bands = monte_carlo.get("bands", {})
-    if bands:
-        best_spread, best_mid = 0.0, None
-        for mid, band in bands.items():
-            p5 = band.get("p5", [None])
-            p95 = band.get("p95", [None])
-            if p5 and p95 and p5[-1] is not None and p95[-1] is not None:
-                spread = float(p95[-1]) - float(p5[-1])
-                if spread > best_spread:
-                    best_spread, best_mid = spread, mid
-        if best_mid:
-            mc_fan_metric = best_mid
-            mc_fan_label = _label(best_mid)
+    # Boxplots: top 5 by MC spread (filtered in the chart function to those in bands)
+    boxplot_ids = top_ids[:5]
 
     # Shock annotations from simspec (scheduled_shocks: {tick: {env_key: delta}})
     shocks_dict: dict[int, str] = {}
@@ -171,11 +194,11 @@ def _build_chart_plan(
         "replant_threshold": None,
         "covenant_threshold": None,
         "boxplot_metrics": [
-            (mid, _short(mid)) for mid in top_ids[:5]
+            (mid, _short(mid)) for mid in boxplot_ids
         ],
         "mc_fan_metric": mc_fan_metric,
         "mc_fan_label": mc_fan_label,
-        "mc_fan_threshold": None,
+        "mc_fan_threshold": mc_fan_threshold,
     }
 
 
@@ -719,8 +742,14 @@ Write the document using EXACTLY these sections, in this order:
 
         from scripts.generate_charts import generate as _gen_charts
 
-        # Model A charts (fig1–fig5)
-        generated = _gen_charts(slug, plan=chart_plan)
+        # Model A charts (fig1–fig11)
+        generated = _gen_charts(
+            slug,
+            plan=chart_plan,
+            theory_contributions=sim_results.get("theory_contributions"),
+            env_snapshots=sim_results.get("env_snapshots"),
+            mc_run_finals=sim_results.get("mc_run_finals"),
+        )
         for p in generated:
             chart_paths[p.stem] = p.resolve()
         logger.info("Generated %d Model A charts for %s", len(generated), slug)
@@ -750,7 +779,13 @@ Write the document using EXACTLY these sections, in this order:
                     sim_results_b.get("monte_carlo", {}), tick_unit,
                     final_env=final_env_b,
                 )
-                generated_b = _gen_charts(slug_b, plan=chart_plan_b)
+                generated_b = _gen_charts(
+                    slug_b,
+                    plan=chart_plan_b,
+                    theory_contributions=sim_results_b.get("theory_contributions"),
+                    env_snapshots=sim_results_b.get("env_snapshots"),
+                    mc_run_finals=sim_results_b.get("mc_run_finals"),
+                )
                 for p in generated_b:
                     chart_paths["b_" + p.stem] = p.resolve()
                 logger.info("Generated %d Model B charts for %s", len(generated_b), slug_b)

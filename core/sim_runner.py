@@ -115,6 +115,8 @@ class SimRunner:
         self.theories: list[TheoryBase] = []
         self.snapshots: list[SimSnapshot] = []
         self.metric_history: list[MetricRecord] = []
+        self.theory_contribution_history: list[dict] = []
+        # Each entry: {"tick": int, "theory_id": str, "total_delta": float}
         self._lock = threading.Lock()
         self._snapshot_triggers: list[ScheduledSnapshotTrigger | ThresholdSnapshotTrigger] = []
         self._running = False
@@ -264,7 +266,14 @@ class SimRunner:
                     #    Collect all deltas first, apply once -> no intra-tick ordering race.
                     theory_deltas: dict[str, float] = {}
                     for theory in self.theories:
-                        theory_deltas.update(theory.update(self.env, self.agents, tick))
+                        t_deltas = theory.update(self.env, self.agents, tick)
+                        t_total = sum(abs(v) for v in t_deltas.values()) if t_deltas else 0.0
+                        self.theory_contribution_history.append({
+                            "tick": tick,
+                            "theory_id": theory.theory_id,
+                            "total_delta": t_total,
+                        })
+                        theory_deltas.update(t_deltas)
                     self.env.update(theory_deltas)
 
                     # 8. Record metrics

@@ -75,7 +75,7 @@ class CobwebMarket(TheoryBase):
     Use market_id for multiple distinct commodity markets in the same sim.
     """
 
-    DOMAINS = ["commodity", "agriculture", "housing", "supply_chain", "market_dynamics"]
+    DOMAINS = ["commodity", "agriculture", "housing", "supply_chain", "market_dynamics", "ecology", "viticulture", "climate", "land"]
 
     class Parameters(BaseModel):
         supply_elasticity: float = Field(

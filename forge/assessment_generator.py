@@ -253,15 +253,21 @@ def _build_markdown(
             chart_embeds_theory = f"\n![Figure 1: Theory ensemble relevance scores]({rel})\n*Figure 1: Theory ensemble relevance scores*\n"
             break
 
-    # Monte Carlo guidance
-    domain_mc = {
-        "market":      "300–500 runs; perturb price_sensitivity ±20%, churn_rate ±15%",
-        "geopolitics": "200–400 runs; perturb escalation_prob ±25%, resolve_threshold ±20%",
-        "conflict":    "200–400 runs; perturb escalation_prob ±25%, resolve_threshold ±20%",
-        "macro":       "200–300 runs; perturb gdp_growth ±15%, inflation ±10%",
-        "corporate":   "200–400 runs; perturb market_share ±15%, cost_pressure ±20%",
-        "ecology":     "300–500 runs; perturb climate_stress ±20%, resource_availability ±25%",
-    }.get(domain, "200–400 runs; perturb key parameters ±15–25%")
+    # Monte Carlo guidance — 300 runs are now executed automatically by the simulation engine
+    # Scenarios: base 60% (±1.5% Gaussian), bull 20% (+5% bias), bear 20% (−5% bias)
+    domain_perturb = {
+        "market":      "price_sensitivity ±5%, churn_rate ±5%, competitive_intensity ±5%",
+        "geopolitics": "escalation_prob ±5%, resolve_threshold ±5%, power_balance ±5%",
+        "conflict":    "escalation_prob ±5%, fatigue_rate ±5%, bargaining_range ±5%",
+        "macro":       "gdp_growth ±5%, inflation ±5%, credit_spreads ±5%",
+        "corporate":   "market_share ±5%, cost_pressure ±5%, revenue_growth ±5%",
+        "ecology":     "climate_stress ±5%, resource_availability ±5%, yield_factor ±5%",
+    }.get(domain, "all initial environment parameters ±5%")
+    domain_mc = (
+        f"300 runs (auto) — base 60% / bull 20% / bear 20%. "
+        f"Perturbation: {domain_perturb}. "
+        f"Fan charts (p5/p25/p50/p75/p95) generated in findings document."
+    )
 
     top_params = list((ctx.parameter_estimates or {}).keys())[:4] if ctx else []
     sensitivity_params = ", ".join(top_params) if top_params else "key initial environment parameters"
@@ -312,20 +318,20 @@ def _build_markdown(
         n_a = len(recs)
         n_b = len(custom_theories)
 
-        # Build table for recommended ensemble
+        # Build table for a given ensemble — reuses module-level helpers
         def _theory_stack_table(theories: list[dict]) -> str:
             rows = [
-                "| Priority | Module | Role | Key Parameters |",
-                "|----------|--------|------|----------------|",
+                "| Priority | Module | Score | Role | Key Parameters |",
+                "|----------|--------|-------|------|----------------|",
             ]
             for t in theories:
                 tid   = t.get("theory_id", "—")
                 pri   = t.get("suggested_priority", t.get("priority", "—"))
-                role  = t.get("application_note") or t.get("rationale") or "—"
-                role  = role[:80] + "…" if len(role) > 80 else role
-                params = t.get("parameters") or {}
-                param_str = ", ".join(f"{k}={v}" for k, v in list(params.items())[:3]) or "—"
-                rows.append(f"| {pri} | **{tid}** | {role} | {param_str} |")
+                score = t.get("score", 0.0)
+                role  = _theory_role(t)
+                role  = role[:120] + "…" if len(role) > 120 else role
+                param_str = _theory_key_params(t)
+                rows.append(f"| {pri} | **{tid}** | {score:.2f} | {role} | {param_str} |")
             return "\n".join(rows)
 
         # Ensemble diff
@@ -437,7 +443,7 @@ def _build_markdown(
 
 {data_gaps}
 
-**Monte Carlo guidance:** {domain_mc}. Perturb: {sensitivity_params}. Horizon: {ticks} {tick_unit}s. Run 1 deterministic baseline first, then launch MC.
+**Monte Carlo:** {domain_mc} Sensitivity parameters: {sensitivity_params}. Horizon: {ticks} {tick_unit}s.
 {custom_note}{gap_section}
 
 ---
@@ -1183,18 +1189,58 @@ def _env_table(spec: Any) -> str:
     return "\n".join(rows)
 
 
+def _theory_role(r: dict) -> str:
+    """Return best available role/mechanism text for a theory dict."""
+    note = r.get("application_note") or r.get("rationale") or ""
+    if note:
+        return (note[:199] + "…") if len(note) >= 200 else note
+    # Fall back to loading the theory object for its description
+    try:
+        from core.theories import get_theory
+        t = get_theory(r["theory_id"])
+        if t and hasattr(t, "description") and t.description:
+            return (t.description[:199] + "…") if len(t.description) >= 200 else t.description
+        if t and hasattr(t, "state_variables"):
+            writes = getattr(t.state_variables, "writes", [])
+            if writes:
+                return "Writes: " + ", ".join(str(w) for w in writes[:5])
+    except Exception:
+        pass
+    return "—"
+
+
+def _theory_key_params(r: dict) -> str:
+    """Return key parameters string for a theory dict."""
+    params = r.get("parameters") or {}
+    if params:
+        return ", ".join(f"{k}={v}" for k, v in list(params.items())[:4])
+    # Fall back to theory object defaults
+    try:
+        from core.theories import get_theory
+        t = get_theory(r["theory_id"])
+        if t and hasattr(t, "parameters") and t.parameters:
+            tp = t.parameters
+            if hasattr(tp, "__dict__"):
+                items = list(vars(tp).items())[:4]
+                return ", ".join(f"{k}={v}" for k, v in items if not k.startswith("_"))
+    except Exception:
+        pass
+    return "—"
+
+
 def _theories_table(recs: list[dict]) -> str:
     if not recs:
         return "*No theories selected.*"
     rows = [
-        "| # | Theory | Score | Key Mechanism |",
-        "|---|--------|-------|---------------|",
+        "| # | Theory | Score | Priority | Key Mechanism | Key Parameters |",
+        "|---|--------|-------|----------|---------------|----------------|",
     ]
     for i, r in enumerate(recs):
-        note = r.get("application_note") or r.get("rationale", "—")
-        note = note[:199] + "…" if len(note) >= 200 else note
         src = " *(new)*" if r.get("source") == "discovered" else ""
-        rows.append(f"| {i+1} | **{r['display_name']}**{src} | {r['score']:.2f} | {note} |")
+        pri = r.get("suggested_priority", r.get("priority", "—"))
+        role = _theory_role(r)
+        params = _theory_key_params(r)
+        rows.append(f"| {i+1} | **{r['display_name']}**{src} | {r['score']:.2f} | {pri} | {role} | {params} |")
     return "\n".join(rows)
 
 

@@ -83,7 +83,7 @@ class HotellingCPR(TheoryBase):
     Use resource_id for multiple simultaneous resources in one sim.
     """
 
-    DOMAINS = ["energy", "resources", "environment", "sustainability", "water"]
+    DOMAINS = ["energy", "resources", "environment", "sustainability", "water", "ecology", "agriculture", "climate", "land", "viticulture"]
 
     class Parameters(BaseModel):
         discount_rate: float = Field(

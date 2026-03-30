@@ -74,44 +74,149 @@ class LaunchRequest(BaseModel):
 
 # ── Background runner ─────────────────────────────────────────────────────────
 
+def _run_simulation_sync(simspec_dict: dict, theory_ids: list, ensemble_type: str) -> dict:
+    """
+    Blocking simulation work — deterministic pass + 300-run Monte Carlo.
+    Intended to be called via run_in_executor so it doesn't block the event loop.
+    """
+    import random as _random
+    from core.spec import SimSpec
+    from core.sim_runner import SimRunner
+    from forge.scoping_agent import _ensure_metrics_consistent
+
+    # ── Deterministic pass ────────────────────────────────────────────────────
+    spec = SimSpec.model_validate(simspec_dict)
+    _ensure_metrics_consistent(spec)
+    runner = SimRunner(spec, rng_seed=42)
+    runner.setup()
+    runner.run()
+
+    metric_series: dict[str, list[float]] = {}
+    metric_names: dict[str, str] = {}
+    for record in runner.metric_history:
+        metric_series.setdefault(record.metric_id, []).append(record.value)
+        metric_names[record.metric_id] = record.name
+
+    final_env = runner.get_current_env()
+    n_ticks = runner.ticks_completed
+    metric_ids = list(metric_series.keys())
+
+    # Serialize snapshot env states (every snapshot tick)
+    env_snapshots: list[dict] = []
+    for snap in runner.snapshots:
+        env_snapshots.append({"tick": snap.tick, "label": snap.label, "env": dict(snap.env)})
+
+    # Serialize theory contributions
+    theory_contributions = runner.theory_contribution_history  # list of {tick, theory_id, total_delta}
+
+    # ── Monte Carlo (300 runs) ────────────────────────────────────────────────
+    # IMPORTANT: use spec.model_dump() (post-_ensure_metrics_consistent) as the base
+    # for all MC runs so metric_ids are identical to the deterministic run.
+    # Re-using simspec_dict would call _ensure_metrics_consistent again, generating
+    # new UUID metric_ids that don't match metric_series keys → empty bands.
+    spec_with_metrics = spec.model_dump()
+
+    N_MC = 300
+    scenario_weights = {"base": 0.60, "bull": 0.20, "bear": 0.20}
+    _rng = _random.Random(42)
+
+    all_mc: dict[str, list[list[float]]] = {mid: [] for mid in metric_ids}
+    mc_run_finals: list[dict[str, float]] = []  # lightweight: one dict per MC run
+
+    base_env = dict(spec.initial_environment)
+
+    for mc_i in range(N_MC):
+        scenario = _rng.choices(
+            list(scenario_weights.keys()),
+            weights=list(scenario_weights.values()),
+        )[0]
+
+        # Perturb initial environment values (clamp to [0, 1])
+        perturbed: dict[str, float] = {}
+        for k, v in base_env.items():
+            if scenario == "bull":
+                delta = _rng.gauss(0.05, 0.02)
+            elif scenario == "bear":
+                delta = _rng.gauss(-0.05, 0.02)
+            else:
+                delta = _rng.gauss(0.0, 0.015)
+            perturbed[k] = max(0.0, min(1.0, v + delta))
+
+        # Use spec_with_metrics (consistent metric_ids) — only swap initial_environment
+        mc_spec = SimSpec.model_validate({**spec_with_metrics, "initial_environment": perturbed})
+        mc_runner = SimRunner(mc_spec, rng_seed=mc_i)
+        mc_runner.setup()
+        mc_runner.run()
+
+        run_series: dict[str, list[float]] = {mid: [] for mid in metric_ids}
+        for rec in mc_runner.metric_history:
+            if rec.metric_id in run_series:
+                run_series[rec.metric_id].append(rec.value)
+
+        for mid in metric_ids:
+            all_mc[mid].append(run_series[mid])
+
+        # Record final-tick value per metric for convergence plot
+        mc_run_finals.append({
+            mid: (run_series[mid][-1] if run_series[mid] else 0.0)
+            for mid in metric_ids
+        })
+
+    # Compute percentile bands per metric
+    bands: dict[str, dict[str, list[float]]] = {}
+    for mid in metric_ids:
+        runs = all_mc[mid]
+        if not runs:
+            continue
+        # Pad any short runs to n_ticks
+        padded = [
+            r + [r[-1]] * max(0, n_ticks - len(r)) if r else [0.0] * n_ticks
+            for r in runs
+        ]
+        tick_data = list(zip(*padded))
+        if not tick_data:
+            continue
+        bands[mid] = {
+            "p5":  [float(sorted(t)[max(0, int(0.05 * len(t)))]) for t in tick_data],
+            "p25": [float(sorted(t)[max(0, int(0.25 * len(t)))]) for t in tick_data],
+            "p50": [float(sorted(t)[max(0, int(0.50 * len(t)))]) for t in tick_data],
+            "p75": [float(sorted(t)[max(0, int(0.75 * len(t)))]) for t in tick_data],
+            "p95": [float(sorted(t)[max(0, int(0.95 * len(t)))]) for t in tick_data],
+        }
+
+    return {
+        "theory_ids":    theory_ids,
+        "ensemble_type": ensemble_type,
+        "ticks":         n_ticks,
+        "metric_series": metric_series,
+        "metric_names":  metric_names,
+        "final_env":     final_env,
+        "snapshot_count": len(runner.snapshots),
+        "monte_carlo": {
+            "n_runs":           N_MC,
+            "scenario_weights": scenario_weights,
+            "bands":            bands,
+        },
+        "env_snapshots":         env_snapshots,
+        "theory_contributions":  theory_contributions,
+        "mc_run_finals":         mc_run_finals,
+    }
+
+
 async def _execute_run(run: SimulationRun, simspec_dict: dict) -> None:
     """Run a SimSpec in the background; write results back to the SimulationRun."""
-    import asyncio
-    from core.spec import SimSpec, TheoryRef
-    from core.sim_runner import SimRunner
-
     run.status = "running"
     try:
-        spec = SimSpec.model_validate(simspec_dict)
-        # Auto-generate metrics from env keys if none were defined
-        from forge.scoping_agent import _ensure_metrics_consistent
-        _ensure_metrics_consistent(spec)
-        runner = SimRunner(spec, rng_seed=42)
-        runner.setup()
-        await asyncio.get_event_loop().run_in_executor(None, runner.run)
-
-        # Serialize results
-        metric_series: dict[str, list[float]] = {}
-        for record in runner.metric_history:
-            metric_series.setdefault(record.metric_id, []).append(record.value)
-
-        final_env = runner.get_current_env()
-
-        run.results = {
-            "theory_ids":     run.theory_ids,
-            "ensemble_type":  run.ensemble_type,
-            "ticks":          runner.ticks_completed,
-            "metric_series":  metric_series,
-            "metric_names":   {
-                r.metric_id: r.name
-                for r in runner.metric_history
-            },
-            "final_env":      final_env,
-            "snapshot_count": len(runner.snapshots),
-        }
+        run.results = await asyncio.get_event_loop().run_in_executor(
+            None,
+            _run_simulation_sync,
+            simspec_dict,
+            run.theory_ids,
+            run.ensemble_type,
+        )
         run.status = "complete"
         run.completed_at = time.time()
-        logger.info("Simulation %s (%s) complete", run.sim_id, run.ensemble_type)
+        logger.info("Simulation %s (%s) complete — MC bands computed", run.sim_id, run.ensemble_type)
 
     except Exception as exc:
         run.status = "error"
