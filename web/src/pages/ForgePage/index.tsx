@@ -130,14 +130,32 @@ export function ForgePage() {
     setFindingsError(null)
     try {
       const apiBase = import.meta.env.VITE_API_URL || ''
+
+      // Kick off background job (returns 202 immediately)
       const res = await fetch(`${apiBase}/forge/intake/${session.session_id}/findings`, { method: 'POST' })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         throw new Error(body.detail || `HTTP ${res.status}`)
       }
-      setFindingsDone(true)
-      const updated = await forgeApi.getSession(session.session_id)
-      setSession(updated)
+
+      // Poll status every 5 seconds until complete or error
+      const poll = async (): Promise<void> => {
+        const s = await fetch(`${apiBase}/forge/intake/${session.session_id}/findings/status`)
+        if (!s.ok) throw new Error(`Status poll failed: HTTP ${s.status}`)
+        const data = await s.json()
+        if (data.status === 'complete') {
+          setFindingsDone(true)
+          const updated = await forgeApi.getSession(session.session_id)
+          setSession(updated)
+        } else if (data.status === 'error') {
+          throw new Error(data.error || 'Findings generation failed')
+        } else {
+          // still running — poll again in 5s
+          await new Promise(r => setTimeout(r, 5000))
+          return poll()
+        }
+      }
+      await poll()
     } catch (e: any) {
       console.error('Findings generation failed', e)
       setFindingsError(e.message || 'Findings generation failed')

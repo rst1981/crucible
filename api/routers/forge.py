@@ -419,66 +419,75 @@ async def download_assessment(session_id: str, fmt: str = "pdf"):
 
 # ── Findings document ─────────────────────────────────────────────────────────
 
-@router.post("/intake/{session_id}/findings", status_code=200)
+@router.post("/intake/{session_id}/findings", status_code=202)
 async def generate_findings(session_id: str) -> dict:
     """
-    Run simulation with recommended parameters and generate a findings document.
-    Launches the sim, waits for completion, then produces findings MD + PDF.
+    Kick off findings generation as a background task and return immediately.
+    Poll GET /intake/{session_id}/findings/status for progress.
     """
-    import time as _time
     session = _get_session(session_id)
-    if not session.recommended_theories:
-        raise HTTPException(status_code=409, detail="No recommended ensemble — complete the interview first")
-
-    # Launch sim with recommended theories
-    from api.routers.simulations import SimulationRun, _execute_run, _runs
 
     if not session.simspec:
         raise HTTPException(status_code=409, detail="SimSpec not built — complete the interview first")
-
     active = session.active_theories
     if not active:
         raise HTTPException(status_code=409, detail="No theories in ensemble — complete ensemble review first")
 
-    spec_dict = session.simspec.model_dump()
-    spec_dict["theories"] = [
-        {"theory_id": t["theory_id"], "priority": t.get("suggested_priority", i), "parameters": t.get("parameters", {})}
-        for i, t in enumerate(active)
-    ]
+    # Mark as in-progress so the status endpoint can report it
+    _findings_status[session_id] = {"status": "running", "error": None}
 
-    run = SimulationRun(session_id=session_id, ensemble_type="recommended",
-                        theory_ids=[t["theory_id"] for t in active])
-    _runs[run.sim_id] = run
+    async def _run_findings():
+        from api.routers.simulations import SimulationRun, _execute_run, _runs
+        try:
+            spec_dict = session.simspec.model_dump()
+            spec_dict["theories"] = [
+                {"theory_id": t["theory_id"], "priority": t.get("suggested_priority", i), "parameters": t.get("parameters", {})}
+                for i, t in enumerate(active)
+            ]
+            run = SimulationRun(session_id=session_id, ensemble_type="recommended",
+                                theory_ids=[t["theory_id"] for t in active])
+            _runs[run.sim_id] = run
 
-    # Run sim — cap at 3 minutes to avoid Railway/Vercel gateway timeout
-    try:
-        await asyncio.wait_for(_execute_run(run, spec_dict), timeout=180.0)
-    except asyncio.TimeoutError:
-        run.status = "error"
-        run.error  = "Simulation timed out after 180s"
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Simulation failed: {exc}")
+            await _execute_run(run, spec_dict)
 
-    if run.status != "complete":
-        raise HTTPException(status_code=500, detail=run.error or "Simulation did not complete")
+            if run.status != "complete":
+                raise RuntimeError(run.error or "Simulation did not complete")
 
-    # Generate findings doc
-    try:
-        from forge.findings_generator import generate_findings as _gen
-        md_path, pdf_path = await asyncio.to_thread(_gen, session, run.results)
-        session.findings_path = str(md_path)
-        _save_session(session)
-        return {
-            "session_id": session_id,
-            "sim_id":     run.sim_id,
-            "md_path":    str(md_path),
-            "pdf_path":   str(pdf_path),
-            "md_exists":  md_path.exists(),
-            "pdf_exists": pdf_path.exists(),
-        }
-    except Exception as exc:
-        logger.exception("Findings generation failed for session %s", session_id)
-        raise HTTPException(status_code=500, detail=str(exc))
+            from forge.findings_generator import generate_findings as _gen
+            md_path, pdf_path = await asyncio.to_thread(_gen, session, run.results)
+            session.findings_path = str(md_path)
+            _save_session(session)
+            _findings_status[session_id] = {
+                "status":     "complete",
+                "error":      None,
+                "md_path":    str(md_path),
+                "pdf_path":   str(pdf_path),
+                "pdf_exists": pdf_path.exists(),
+            }
+        except Exception as exc:
+            logger.exception("Findings generation failed for session %s", session_id)
+            _findings_status[session_id] = {"status": "error", "error": str(exc)}
+
+    asyncio.create_task(_run_findings())
+    return {"session_id": session_id, "status": "running"}
+
+
+# In-memory findings job status (survives the request; keyed by session_id)
+_findings_status: dict[str, dict] = {}
+
+
+@router.get("/intake/{session_id}/findings/status")
+async def findings_status(session_id: str) -> dict:
+    """Poll findings generation progress."""
+    _get_session(session_id)  # 404 if session gone
+    status = _findings_status.get(session_id)
+    if not status:
+        # Check if already done from a previous run
+        session = _get_session(session_id)
+        if session.findings_path:
+            return {"status": "complete", "error": None}
+        return {"status": "not_started", "error": None}
+    return status
 
 
 
