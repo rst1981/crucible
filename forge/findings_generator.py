@@ -118,16 +118,15 @@ def _build_chart_plan(
             mc_fan_metric = best_mid
             mc_fan_label = _label(best_mid)
 
-    # Shock annotations from simspec
+    # Shock annotations from simspec (scheduled_shocks: {tick: {env_key: delta}})
     shocks_dict: dict[int, str] = {}
-    if spec.shocks:
-        for sh in spec.shocks:
-            label = sh.label or ", ".join(sh.variables.keys())
-            # Truncate long labels for chart readability
-            words = label.split()
-            shocks_dict[sh.tick] = "\n".join(
-                " ".join(words[i:i+2]) for i in range(0, min(len(words), 4), 2)
-            )
+    scheduled = getattr(spec, "scheduled_shocks", None) or {}
+    for tick, vars_dict in scheduled.items():
+        label = ", ".join(vars_dict.keys())
+        words = label.split()
+        shocks_dict[int(tick)] = "\n".join(
+            " ".join(words[i:i+2]) for i in range(0, min(len(words), 4), 2)
+        )
 
     return {
         "tick_unit": tick_unit,
@@ -212,13 +211,17 @@ def generate_findings(session: "ForgeSession", sim_results: dict) -> tuple[Path,
         for k, v in sorted(final_env.items())[:40]
     )
 
-    # Shock schedule from simspec
+    # Shock schedule from simspec (scheduled_shocks: {tick: {env_key: delta}})
     shocks_text = ""
-    if spec.shocks:
+    _scheduled = getattr(spec, "scheduled_shocks", None) or {}
+    if _scheduled:
         shock_rows = []
-        for sh in sorted(spec.shocks, key=lambda s: s.tick):
-            vars_str = ", ".join(f"{k} {'+' if v >= 0 else ''}{v:.2f}" for k, v in sh.variables.items())
-            shock_rows.append(f"| {sh.tick} | {sh.label or ''} | {vars_str} |")
+        for tick, vars_dict in sorted(_scheduled.items(), key=lambda x: int(x[0])):
+            vars_str = ", ".join(
+                f"{k} {'+' if v >= 0 else ''}{float(v):.2f}"
+                for k, v in vars_dict.items()
+            )
+            shock_rows.append(f"| {tick} | | {vars_str} |")
         shocks_text = (
             "| Tick | Event | Key Variables Shocked |\n"
             "|------|-------|----------------------|\n"
