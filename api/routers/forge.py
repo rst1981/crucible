@@ -69,6 +69,7 @@ async def _load_sessions() -> None:
             session.custom_theories      = data.get("custom_theories")
             session.assessment_path      = data.get("assessment_path")
             session.findings_path        = data.get("findings_path")
+            session.findings_md          = data.get("findings_md")
             session.data_gaps            = data.get("data_gaps", [])
             session.proprietary_gaps     = data.get("proprietary_gaps", [])
             session.gap_research_running  = False  # never resume mid-run
@@ -456,6 +457,11 @@ async def generate_findings(session_id: str) -> dict:
             from forge.findings_generator import generate_findings as _gen
             md_path, pdf_path = await asyncio.to_thread(_gen, session, run.results)
             session.findings_path = str(md_path)
+            # Store MD content in session so download works after Railway redeploy (ephemeral FS)
+            try:
+                session.findings_md = md_path.read_text(encoding="utf-8")
+            except Exception:
+                pass
             _save_session(session)
             _findings_status[session_id] = {
                 "status":     "complete",
@@ -465,8 +471,10 @@ async def generate_findings(session_id: str) -> dict:
                 "pdf_exists": pdf_path.exists(),
             }
         except Exception as exc:
-            logger.exception("Findings generation failed for session %s", session_id)
-            _findings_status[session_id] = {"status": "error", "error": str(exc)}
+            import traceback
+            tb = traceback.format_exc()
+            logger.exception("Findings generation failed for session %s: %s", session_id, tb)
+            _findings_status[session_id] = {"status": "error", "error": str(exc), "detail": tb}
 
     asyncio.create_task(_run_findings())
     return {"session_id": session_id, "status": "running"}
@@ -494,18 +502,57 @@ async def findings_status(session_id: str) -> dict:
 @router.get("/intake/{session_id}/findings/download")
 async def download_findings(session_id: str, fmt: str = "pdf"):
     """Download the findings PDF or MD for a session."""
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, Response
     session = _get_session(session_id)
-    if not getattr(session, "findings_path", None):
+
+    # No findings generated yet
+    findings_md_content = getattr(session, "findings_md", None)
+    if not getattr(session, "findings_path", None) and not findings_md_content:
         raise HTTPException(status_code=404, detail="Findings not yet generated")
-    md_path  = pathlib.Path(session.findings_path)
-    pdf_path = md_path.with_suffix(".pdf")
-    path = (pdf_path if fmt != "md" and pdf_path.exists() else md_path)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Findings file not found on server")
-    media_type = "application/pdf" if path.suffix == ".pdf" else "text/markdown"
-    filename = f"{session.simspec.name or session_id}-findings{path.suffix}".replace(" ", "-")
-    return FileResponse(path, media_type=media_type, filename=filename)
+
+    md_path  = pathlib.Path(session.findings_path) if session.findings_path else None
+    pdf_path = md_path.with_suffix(".pdf") if md_path else None
+
+    # If MD file is missing but we have the content stored in Postgres, recreate it
+    if md_path and not md_path.exists() and findings_md_content:
+        try:
+            md_path.parent.mkdir(parents=True, exist_ok=True)
+            md_path.write_text(findings_md_content, encoding="utf-8")
+            logger.info("Restored findings MD from session store: %s", md_path)
+        except Exception as exc:
+            logger.warning("Could not restore findings MD to disk: %s", exc)
+
+    # PDF: serve from disk (or regenerate from MD)
+    if fmt != "md":
+        if pdf_path and not pdf_path.exists() and md_path and md_path.exists():
+            try:
+                from scripts.md_to_pdf import convert
+                pdf_path = await asyncio.to_thread(convert, md_path, quiet=True)
+            except Exception as exc:
+                logger.warning("PDF regeneration failed: %s — falling back to MD", exc)
+                pdf_path = None
+
+        if pdf_path and pdf_path.exists():
+            stem = (session.simspec.name if session.simspec else None) or session_id
+            filename = f"{stem}-findings.pdf".replace(" ", "-")
+            return FileResponse(str(pdf_path), media_type="application/pdf", filename=filename)
+
+    # MD fallback: serve from disk or directly from session store
+    if md_path and md_path.exists():
+        stem = (session.simspec.name if session.simspec else None) or session_id
+        filename = f"{stem}-findings.md".replace(" ", "-")
+        return FileResponse(str(md_path), media_type="text/markdown", filename=filename)
+
+    if findings_md_content:
+        stem = (session.simspec.name if session.simspec else None) or session_id
+        filename = f"{stem}-findings.md".replace(" ", "-")
+        return Response(
+            content=findings_md_content.encode("utf-8"),
+            media_type="text/markdown",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    raise HTTPException(status_code=404, detail="Findings file not found — please regenerate")
 
 
 # ── Gap research endpoint ─────────────────────────────────────────────────────
