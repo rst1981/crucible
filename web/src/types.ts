@@ -99,6 +99,8 @@ export interface ForgeSession {
   custom_theories: TheoryRecommendation[] | null
   assessment_path: string | null
   findings_path: string | null
+  findings_job_status: 'not_started' | 'running' | 'complete' | 'error'
+  findings_job_error: string | null
   data_gaps: string[]
   proprietary_gaps: string[]
   gap_research_running: boolean
