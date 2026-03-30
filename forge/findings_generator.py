@@ -335,10 +335,59 @@ Write the document using EXACTLY these sections, in this order:
     )
 
     md_content = resp.content[0].text.strip()
+
+    # ── Generate charts ──────────────────────────────────────────────────────
+    # Save sim_results to scenarios/{slug}/results.json so generate_charts can read it
+    import json
+    chart_paths: dict[str, Path] = {}
+    try:
+        scenarios_dir = Path(__file__).parent.parent / "scenarios" / slug
+        scenarios_dir.mkdir(parents=True, exist_ok=True)
+        results_json = scenarios_dir / "results.json"
+        results_json.write_text(json.dumps(sim_results, default=str), encoding="utf-8")
+
+        from scripts.generate_charts import generate as _gen_charts
+        generated = _gen_charts(slug)
+        for p in generated:
+            chart_paths[p.stem] = p.resolve()
+        logger.info("Generated %d charts for %s", len(generated), slug)
+    except Exception as exc:
+        logger.warning("Chart generation failed (findings will have no images): %s", exc)
+
+    # ── Inject chart references into markdown ────────────────────────────────
+    # Insert charts at specific section boundaries using absolute paths.
+    # xhtml2pdf embeds images as base64 so absolute paths are required.
+    def _img(stem: str, caption: str) -> str:
+        p = chart_paths.get(stem)
+        if not p or not p.exists():
+            return ""
+        return f'\n\n![{caption}]({p})\n\n*{caption}*\n'
+
+    # Injection points (insert AFTER these section headers):
+    injections = [
+        # After Executive Findings → shock cascade + MC fan
+        ("## 1. Simulation Design",
+         _img("fig2_shock_cascade", "Shock Cascade — Primary Financial Metrics") +
+         _img("fig3_mc_fan", "Survival Probability — 300-Run Monte Carlo Fan Chart")),
+        # After Section 1 shock table → key metrics dashboard
+        ("## 2. Results by Module",
+         _img("fig1_metrics_dashboard", "Financial Health Dashboard — All Metrics")),
+        # After Section 2 module results → secondary indicators
+        ("## 3. Cascade Interaction",
+         _img("fig4_secondary_indicators", "Climate & Resource Stress Indicators")),
+        # After Section 4 MC distribution → boxplot
+        ("## 5. Model Limitations",
+         _img("fig5_mc_final_distribution", "Monte Carlo Final Distribution — Key Metrics")),
+    ]
+
+    for marker, img_block in injections:
+        if img_block and marker in md_content:
+            md_content = md_content.replace(marker, img_block + marker, 1)
+
     md_path.write_text(md_content, encoding="utf-8")
     logger.info("Findings MD written: %s", md_path)
 
-    # Convert to PDF
+    # ── Convert to PDF ───────────────────────────────────────────────────────
     try:
         from scripts.md_to_pdf import convert
         pdf_path = convert(md_path, quiet=True)
