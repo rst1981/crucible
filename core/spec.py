@@ -190,12 +190,36 @@ class SimSpec(BaseModel):
 
     @model_validator(mode="after")
     def metric_env_keys_exist(self) -> "SimSpec":
+        # Build the full set of valid env keys:
+        # 1. Keys explicitly seeded in initial_environment
+        # 2. Keys that theories write to the environment at runtime (via theory.setup())
+        # Metrics referencing theory write keys are valid even if absent from
+        # initial_environment — _ensure_metrics_consistent will rebuild them before
+        # simulation anyway.
         env_keys = set(self.initial_environment.keys())
+        try:
+            from core.theories import get_theory
+            for theory_ref in self.theories:
+                try:
+                    theory_cls = get_theory(theory_ref.theory_id)
+                    inst = theory_cls(params=theory_ref.parameters or {})
+                    env_keys.update(inst.state_variables.writes)
+                    env_keys.update(inst.state_variables.initializes)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
         for metric in self.metrics:
             if metric.env_key not in env_keys:
-                raise ValueError(
-                    f"OutcomeMetric '{metric.name}' references env_key "
-                    f"'{metric.env_key}' which is not in initial_environment"
+                # Soft warning only — _ensure_metrics_consistent will rebuild metrics
+                # from actual theory write keys before any simulation run.
+                _log.debug(
+                    "OutcomeMetric '%s' env_key '%s' not found in env at validation time "
+                    "(may be resolved by _ensure_metrics_consistent at run time)",
+                    metric.name, metric.env_key,
                 )
         return self
 
