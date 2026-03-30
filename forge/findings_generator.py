@@ -1,14 +1,15 @@
 """
 forge/findings_generator.py — Simulation Findings Document Generator
 
-Generates a rich, consultant-grade findings document from completed simulation
-results. Structured like the DeepSeek / Hormuz results documents:
-  - Executive summary with baseline → final state table
-  - Theory-by-theory impact analysis
-  - Key metric trajectories
-  - Current state & active threats
-  - Strategic implications for the client
-  - Full environment state appendix
+Structure matches the canonical walla-walla findings format:
+  Executive Summary (Baseline / Causes / Final State / Projection)
+  Executive Findings (phase narrative)
+  1. Simulation Design (architecture cascade + shock table)
+  2. Results by Module (per-theory data tables)
+  3. Cascade Interaction (numbered cascade steps)
+  4. Monte Carlo Distribution (full percentile table)
+  5. Model Limitations (table with status)
+  6. Parameters Appendix
 
 Output: forge/research/{slug}-findings.md + .pdf
 """
@@ -35,13 +36,21 @@ def _slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:60]
 
 
+def _fmt(v) -> str:
+    """Format a float to 3 decimal places, or return str as-is."""
+    try:
+        return f"{float(v):.3f}"
+    except (TypeError, ValueError):
+        return str(v)
+
+
 def generate_findings(session: "ForgeSession", sim_results: dict) -> tuple[Path, Path]:
     """
     Generate a findings document from a completed simulation run.
 
     Args:
         session:     The ForgeSession with full SimSpec and research context.
-        sim_results: The results dict from GET /simulations/{sim_id}.
+        sim_results: The results dict from _execute_run.
 
     Returns:
         (md_path, pdf_path)
@@ -53,144 +62,274 @@ def generate_findings(session: "ForgeSession", sim_results: dict) -> tuple[Path,
     md_path  = _RESEARCH_DIR / f"{slug}-findings.md"
     pdf_path = md_path.with_suffix(".pdf")
 
-    # ── Build context for the LLM ───────────────────────────────────────────
+    # ── Extract simulation data ──────────────────────────────────────────────
 
-    ticks        = sim_results.get("ticks", 0)
+    ticks         = sim_results.get("ticks", 0)
     metric_series = sim_results.get("metric_series", {})
     metric_names  = sim_results.get("metric_names", {})
     final_env     = sim_results.get("final_env", {})
     theory_ids    = sim_results.get("theory_ids", [])
-    snapshot_count = sim_results.get("snapshot_count", 0)
 
-    # Build metric trajectory table (tick 0 → mid → final for each metric)
+    tick_unit  = spec.timeframe.tick_unit if spec.timeframe else "tick"
+    start_date = (spec.metadata or {}).get("start_date", "")
+    end_date   = (spec.metadata or {}).get("end_date", "")
+
+    # Full metric trajectory: tick 0, 25%, 50%, 75%, final
     trajectory_rows = []
     for mid, series in metric_series.items():
         if not series:
             continue
         name = metric_names.get(mid, mid.replace("_", " ").replace("__", ": ").title())
-        tick0 = series[0]
-        tick_mid = series[len(series)//2] if len(series) > 2 else series[-1]
-        tick_final = series[-1]
-        delta = tick_final - tick0
-        direction = "▲" if delta > 0.01 else ("▼" if delta < -0.01 else "→")
+        n = len(series)
+        vals = {
+            "t0":   series[0],
+            "t25":  series[n // 4],
+            "t50":  series[n // 2],
+            "t75":  series[3 * n // 4],
+            "tfin": series[-1],
+        }
+        delta = vals["tfin"] - vals["t0"]
+        arrow = "▲" if delta > 0.01 else ("▼" if delta < -0.01 else "→")
         trajectory_rows.append(
-            f"| {name} | {tick0:.3f} | {tick_mid:.3f} | {tick_final:.3f} | "
-            f"{direction} {abs(delta):.3f} |"
+            f"| {name} | {_fmt(vals['t0'])} | {_fmt(vals['t25'])} | "
+            f"{_fmt(vals['t50'])} | {_fmt(vals['t75'])} | {_fmt(vals['tfin'])} | "
+            f"{arrow} {abs(delta):.3f} |"
         )
 
     trajectory_table = (
-        "| Metric | Tick 0 | Mid | Final | Change |\n"
-        "|--------|--------|-----|-------|--------|\n"
+        "| Metric | T=0 | T=25% | T=50% | T=75% | Final | Change |\n"
+        "|--------|-----|-------|-------|-------|-------|--------|\n"
         + "\n".join(trajectory_rows)
     ) if trajectory_rows else "_No outcome metrics tracked._"
 
-    # Final environment — show top 20 most changed keys
-    env_initial = {k: v - 0.0 for k, v in final_env.items()}  # we only have final
-    env_rows = "\n".join(
-        f"| `{k}` | {v:.4f} |"
+    # Final environment — top 40 keys alphabetically
+    env_table = "| Key | Final Value |\n|-----|-------------|\n" + "\n".join(
+        f"| `{k}` | {_fmt(v)} |"
         for k, v in sorted(final_env.items())[:40]
     )
-    env_table = "| Key | Final Value |\n|-----|-------------|\n" + env_rows
 
-    # Research context summary
+    # Shock schedule from simspec
+    shocks_text = ""
+    if spec.shocks:
+        shock_rows = []
+        for sh in sorted(spec.shocks, key=lambda s: s.tick):
+            vars_str = ", ".join(f"{k} {'+' if v >= 0 else ''}{v:.2f}" for k, v in sh.variables.items())
+            shock_rows.append(f"| {sh.tick} | {sh.label or ''} | {vars_str} |")
+        shocks_text = (
+            "| Tick | Event | Key Variables Shocked |\n"
+            "|------|-------|----------------------|\n"
+            + "\n".join(shock_rows)
+        )
+
+    # Theory cascade for architecture block
+    theories_in_spec = spec.theories if spec.theories else []
+    cascade_lines = []
+    for t in sorted(theories_in_spec, key=lambda x: -(x.priority or 0)):
+        cascade_lines.append(f"{t.theory_id} (priority {t.priority})")
+    cascade_text = "\n".join(cascade_lines) or "(no theories)"
+
+    # MC data if present — bands or summary
+    mc_text = ""
+    if "monte_carlo" in sim_results:
+        mc = sim_results["monte_carlo"]
+        bands = mc.get("bands", {})
+        if bands:
+            mc_rows = []
+            for metric, band in list(bands.items())[:8]:
+                name = metric_names.get(metric, metric)
+                p5   = _fmt(band.get("p5",  [None])[-1])
+                p25  = _fmt(band.get("p25", [None])[-1])
+                p50  = _fmt(band.get("p50", [None])[-1])
+                p75  = _fmt(band.get("p75", [None])[-1])
+                p95  = _fmt(band.get("p95", [None])[-1])
+                mc_rows.append(f"| {name} | {p5} | {p25} | {p50} | {p75} | {p95} |")
+            mc_text = (
+                "| Metric | p5 | p25 | p50 | p75 | p95 |\n"
+                "|--------|----|----|-----|-----|-----|\n"
+                + "\n".join(mc_rows)
+            )
+
+    # Research grounding
     research_summary = ""
     if session.research_context and session.research_context.results:
-        ok_results = [r for r in session.research_context.results if r.ok][:8]
+        ok = [r for r in session.research_context.results if r.ok][:8]
         research_summary = "\n".join(
             f"- {r.title}: {r.summary[:120]}..." if r.summary else f"- {r.title}"
-            for r in ok_results if r.title
+            for r in ok if r.title
         )
 
-    # Assessment path for cross-reference
-    assessment_note = ""
-    if session.assessment_path:
-        assessment_note = f"(Cross-reference: assessment document at {session.assessment_path})"
-
-    # Gaps resolved
-    gaps_summary = ""
-    if session.data_gaps:
-        closed = session.closed_gaps or []
-        gaps_summary = "\n".join(
-            f"- {'✓' if g in closed else '○'} {g}"
-            for g in session.data_gaps
-        )
+    outcome_focus = (spec.metadata or {}).get("outcome_focus", "")
+    client_type   = (spec.metadata or {}).get("client_type", "the client")
 
     # ── LLM call ────────────────────────────────────────────────────────────
 
     system = (
-        "You are a senior consultant writing a simulation findings document for a client. "
-        "Write in a professional, analytical style — like the best McKinsey/Accenture output. "
-        "Be specific: reference actual numbers from the simulation data. "
-        "Every section should contain insights, not just descriptions. "
-        "Use markdown tables, headers, and bold text for structure. "
-        "Do not write generic placeholders — every sentence should earn its place."
+        "You are a senior quantitative analyst writing a simulation findings document. "
+        "Write in a professional, analytical style. Be specific: every number you cite "
+        "must come from the simulation data provided. Do not invent values. "
+        "Use markdown tables and headers exactly as specified in the structure. "
+        "Every section must contain real insights tied to actual simulation outputs."
     )
 
-    prompt = f"""Write a complete simulation findings document for the following scenario.
-
-## Scenario
-**Name:** {spec.name}
-**Domain:** {spec.domain}
-**Description:** {spec.description or session.intake_text[:300]}
-**Timeframe:** {spec.timeframe.total_ticks} ticks ({spec.timeframe.tick_unit})
-**Outcome Focus:** {(spec.metadata or {}).get('outcome_focus', 'Not specified')}
-
-## Simulation Parameters
-- **Theories active:** {', '.join(theory_ids) or 'none'}
-- **Actors:** {len(spec.actors)} ({', '.join(a.name for a in spec.actors[:6])})
-- **Ticks completed:** {ticks}
-- **Snapshots:** {snapshot_count}
-- **Data gaps resolved:** {len(session.closed_gaps or [])} of {len(session.data_gaps or [])}
-{assessment_note}
-
-## Metric Trajectories
-{trajectory_table}
-
-## Final Environment State (selected)
-{env_table}
-
-## Research Grounding
-{research_summary or 'No external research sources available.'}
-
-## Data Gaps
-{gaps_summary or 'No gaps identified.'}
+    prompt = f"""Write a complete simulation findings document. Follow the EXACT structure below.
+All numbers must come from the simulation data. Do not use placeholder text.
 
 ---
 
-Write the findings document with these sections:
+## SIMULATION DATA
 
-# {{Scenario Name}} — Simulation Findings
-**Date:** {time.strftime('%Y-%m-%d')} | **Ticks:** {ticks} | **Theories:** {len(theory_ids)}
+**Scenario:** {spec.name}
+**Domain:** {spec.domain}
+**Description:** {spec.description or session.intake_text[:400]}
+**Timeframe:** {ticks} {tick_unit}s | Start: {start_date} | End: {end_date}
+**Outcome Focus:** {outcome_focus}
+**Client type:** {client_type}
+**Theories active:** {', '.join(theory_ids) or 'none'}
+**Actors:** {', '.join(a.name for a in spec.actors[:8])}
+
+### Metric Trajectories (T=0, 25%, 50%, 75%, Final)
+{trajectory_table}
+
+### Final Environment State
+{env_table}
+
+### Shock Schedule
+{shocks_text or '(no scheduled shocks)'}
+
+### Theory Cascade (by priority)
+```
+{cascade_text}
+```
+
+### Monte Carlo (if present)
+{mc_text or '(no MC data)'}
+
+### Research Grounding
+{research_summary or 'No external research available.'}
+
+---
+
+## REQUIRED DOCUMENT STRUCTURE
+
+Write the document using EXACTLY these sections, in this order:
+
+---
+
+# {{Scenario Name}} — Simulation Results & Analysis
+**Date:** {time.strftime('%Y-%m-%d')} | **Ticks:** {ticks} {tick_unit}s ({start_date} – {end_date}) | **Version:** 1 — {len(theory_ids)} theory modules | **Focus:** {{1-line outcome focus}}
+
+---
 
 ## Executive Summary
-(3-4 sentences: what the sim was testing, what happened, and the headline finding)
 
-## Baseline Configuration
-(Table: key metrics at tick 0, their interpretation, and calibration source)
+### Baseline Position (Tick 0 — {{start date}})
+{{2–3 sentences describing the entity's starting position from the simulation data.}}
 
-## Key Dynamics — What Drove the Outcome
-(One subsection per active theory. For each: what it modeled, how it behaved in this run, what values it reached, and what that means for the scenario. Be specific about numbers.)
+| Indicator | Tick 0 | Value |
+|-----------|--------|-------|
+{{5–7 rows using real tick-0 values from the trajectory table above}}
 
-## Metric Trajectories & Interpretation
-(Reference the trajectory table. Explain the shape of each major metric's path — not just the values, but what the pattern means.)
+### Causes of the {{N}}-{{unit}} {{Change/Decline/Rise}}
+{{For each major cause (3–5), numbered:}}
+**N. {{Event Name}} (Tick X / {{timeframe label}})** — {{Short Label}} *({{theory_id}}, {{key_var}}: {{value}})*
+{{2–3 sentences with specific numbers from the simulation data.}}
 
-## Final State Assessment
-(Table: metric | final value | status (Critical/High/Moderate/Stable) | interpretation)
-(Follow with 3-5 bullet points on the most important findings)
+### Final State (Tick {{N}} — {{end date}})
+| Indicator | Final Value | Change from Tick 0 | Status |
+|-----------|-------------|-------------------|--------|
+{{6–8 rows; Status = CRITICAL / DISTRESSED / SEVERE DECLINE / TRIGGERED / COVENANT BREACH / STABLE / etc.}}
 
-## Strategic Implications for {(spec.metadata or {}).get('client_type', 'the client')}
-(What should the client actually do with these findings? 4-6 specific, actionable recommendations tied to simulation outputs.)
+**Primary active threats:**
+- {{bullet per major threat, tied to specific metric values}}
 
-## Limitations & Caveats
-(Brief: what the model can and cannot tell us, what data gaps remain)
+### {{N}}-{{unit}} Projection
+| Scenario | {{Primary metric}} range | Trigger | Probability |
+|----------|------------------------|---------|-------------|
+| Base ({{N}}%) | ... | ... | ... |
+| Bull ({{N}}%) | ... | ... | ... |
+| Bear ({{N}}%) | ... | ... | ... |
 
-## Appendix: Full Simulation Parameters
-(List all active theories with their key parameters from the environment state)
+**Key finding:** {{1–2 sentences on the most important MC or scenario finding.}}
+
+---
+
+## Executive Findings
+
+{{4–5 paragraphs. Label phases if the scenario has distinct phases (Phase 1, Phase 2, etc.). Each paragraph should cover a distinct dynamic from the simulation — not just summarise, but interpret. End with a paragraph on Monte Carlo convergence or uncertainty.}}
+
+---
+
+## 1. Simulation Design
+
+### Architecture ({len(theory_ids)} Modules)
+```
+{cascade_text}
+```
+
+### Timeframe and Shocks
+
+| Variable | Value |
+|----------|-------|
+| Tick unit | {tick_unit} |
+| Total ticks | {ticks} |
+| Tick 0 | {start_date} — Baseline |
+| Tick {ticks - 1} | {end_date} — End of projection |
+
+{shocks_text or '*(No scheduled shocks.)*'}
+
+---
+
+## 2. Results by Module
+
+{{One subsection per theory. For each:}}
+### 2.N {{Module Display Name}} {{(NEW — Citation if applicable)}}
+{{1–2 sentences: what this module modeled in this scenario.}}
+
+| Tick | {{unit}} | {{metric 1}} | {{metric 2}} | Event |
+|------|---------|-------------|-------------|-------|
+{{4–6 rows at key ticks using real values from the simulation data}}
+
+{{2–3 sentence interpretation of what the numbers show.}}
+
+---
+
+## 3. Cascade Interaction
+
+{{Numbered list of how module outputs fed into each other — the specific sequence that produced the key outcome. Be precise about which variables were passed between modules.}}
+
+{{Bold concluding sentence stating the core cascade finding.}}
+
+---
+
+## 4. Monte Carlo Distribution
+
+{{If MC data is present:}}
+**{{N}} runs.** Scenarios: {{base N%}} / {{bull N%}} / {{bear N%}}.
+
+{mc_text or '*(No Monte Carlo data in this run.)*'}
+
+{{3 short paragraphs interpreting the MC table: convergence/divergence, which metrics are certain vs uncertain, what drives the spread.}}
+
+---
+
+## 5. Model Limitations
+
+| Limitation | Impact | Status |
+|-----------|--------|--------|
+{{5–7 rows. Status = OPEN / RESOLVED / BY DESIGN}}
+
+---
+
+## 6. Parameters Appendix
+
+| Module | Key Parameters Used | Calibration Source |
+|--------|--------------------|--------------------|
+{{One row per theory with the key parameter values actually used}}
 """
 
     resp = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=4000,
+        max_tokens=6000,
         messages=[{"role": "user", "content": prompt}],
         system=system,
     )
