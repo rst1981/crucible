@@ -66,6 +66,38 @@ export function ForgePage() {
     }
   }, [buildingCustom])
 
+  // Resume polling if page loaded/refreshed while findings was running
+  useEffect(() => {
+    if (!session || session.findings_job_status !== 'running') return
+    if (generatingFindings) return  // already polling
+    setGeneratingFindings(true)
+    setFindingsError(null)
+    const apiBase = import.meta.env.VITE_API_URL || ''
+    const poll = async (): Promise<void> => {
+      try {
+        const s = await fetch(`${apiBase}/forge/intake/${session.session_id}/findings/status`)
+        if (!s.ok) throw new Error(`Status poll failed: HTTP ${s.status}`)
+        const data = await s.json()
+        if (data.status === 'complete') {
+          setFindingsDone(true)
+          const updated = await forgeApi.getSession(session.session_id)
+          setSession(updated)
+          setGeneratingFindings(false)
+        } else if (data.status === 'error') {
+          setFindingsError(data.error || 'Findings generation failed')
+          setGeneratingFindings(false)
+        } else {
+          await new Promise(r => setTimeout(r, 5000))
+          return poll()
+        }
+      } catch (e: any) {
+        setFindingsError(e.message || 'Findings poll failed')
+        setGeneratingFindings(false)
+      }
+    }
+    poll()
+  }, [session?.session_id, session?.findings_job_status])
+
   const handleStart = async () => {
     if (!intakeText.trim()) return
     setStarting(true)

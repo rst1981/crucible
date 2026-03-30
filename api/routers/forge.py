@@ -442,53 +442,62 @@ async def generate_findings(session_id: str) -> dict:
     session.findings_job_error  = None
     _save_session(session)
 
+    # Capture everything needed for the closure now — no re-fetching inside the task
+    active_snapshot = list(active)
+    simspec_dict_snapshot = session.simspec.model_dump()
+    simspec_dict_snapshot["theories"] = [
+        {
+            "theory_id": t["theory_id"],
+            "priority":  int(t.get("suggested_priority") or i),
+            "parameters": t.get("parameters") or {},
+        }
+        for i, t in enumerate(active_snapshot)
+    ]
+
     async def _run_findings():
-        from api.routers.simulations import SimulationRun, _execute_run, _runs
-        # Re-fetch session from in-memory store (it's the live object)
-        s = _sessions.get(session_id)
-        if not s:
-            logger.error("Findings task: session %s disappeared", session_id)
-            return
+        """Background task — entire body is wrapped so any crash sets status=error."""
+        import traceback as _tb
         try:
-            spec_dict = s.simspec.model_dump()
-            spec_dict["theories"] = [
-                {
-                    "theory_id": t["theory_id"],
-                    "priority":  int(t.get("suggested_priority") or i),
-                    "parameters": t.get("parameters") or {},
-                }
-                for i, t in enumerate(active)
-            ]
-            run = SimulationRun(session_id=session_id, ensemble_type="recommended",
-                                theory_ids=[t["theory_id"] for t in active])
+            from api.routers.simulations import SimulationRun, _execute_run, _runs
+
+            logger.info("Findings task started for session %s", session_id)
+
+            run = SimulationRun(
+                session_id=session_id,
+                ensemble_type="recommended",
+                theory_ids=[t["theory_id"] for t in active_snapshot],
+            )
             _runs[run.sim_id] = run
 
-            await _execute_run(run, spec_dict)
+            await _execute_run(run, simspec_dict_snapshot)
 
             if run.status != "complete":
                 raise RuntimeError(run.error or "Simulation did not complete")
 
+            logger.info("Sim complete for session %s, generating findings doc", session_id)
+
             from forge.findings_generator import generate_findings as _gen
-            md_path, pdf_path = await asyncio.to_thread(_gen, s, run.results)
-            s.findings_path       = str(md_path)
-            s.findings_job_status = "complete"
-            s.findings_job_error  = None
+            md_path, pdf_path = await asyncio.to_thread(_gen, session, run.results)
+
+            session.findings_path       = str(md_path)
+            session.findings_job_status = "complete"
+            session.findings_job_error  = None
             try:
-                s.findings_md = md_path.read_text(encoding="utf-8")
+                session.findings_md = md_path.read_text(encoding="utf-8")
             except Exception:
                 pass
-            _save_session(s)
+            _save_session(session)
             logger.info("Findings complete for session %s: %s", session_id, md_path)
 
         except Exception as exc:
-            import traceback
-            tb = traceback.format_exc()
-            logger.exception("Findings generation failed for session %s", session_id)
-            s = _sessions.get(session_id)
-            if s:
-                s.findings_job_status = "error"
-                s.findings_job_error  = f"{exc}\n\n{tb}"
-                _save_session(s)
+            err = f"{exc}\n\n{_tb.format_exc()}"
+            logger.exception("Findings task FAILED for session %s: %s", session_id, exc)
+            try:
+                session.findings_job_status = "error"
+                session.findings_job_error  = err
+                _save_session(session)
+            except Exception as save_exc:
+                logger.error("Could not save error status for session %s: %s", session_id, save_exc)
 
     asyncio.create_task(_run_findings())
     return {"session_id": session_id, "status": "running"}
